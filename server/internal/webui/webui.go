@@ -4,13 +4,24 @@ package webui
 import (
 	"embed"
 	"io/fs"
+	"mime"
 	"net/http"
 	"path"
 	"strings"
 )
 
+// dist is filled by the build (web/dist plus downloads/); the repo only keeps .gitkeep.
+//
 //go:embed all:dist
 var dist embed.FS
+
+// placeholder is served as index.html when the web app was not built in.
+//
+//go:embed placeholder.html
+var placeholder []byte
+
+// Go's built-in MIME table lacks .webmanifest, and distroless has no /etc/mime.types.
+func init() { _ = mime.AddExtensionType(".webmanifest", "application/manifest+json") }
 
 // FS is the embedded dist directory.
 func FS() fs.FS {
@@ -46,8 +57,7 @@ func Handler(files fs.FS) http.Handler {
 		}
 		index, err := fs.ReadFile(files, "index.html")
 		if err != nil {
-			http.NotFound(w, r)
-			return
+			index = placeholder
 		}
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")
 		w.Header().Set("Cache-Control", "no-cache")

@@ -2,11 +2,12 @@
 # Smoke test: build, start on a random port with a temp data dir, and walk
 # through setup -> login -> bookmark -> WebDAV GET/PROPFIND -> PUT -> history -> restore.
 # Needs: go, curl, python3. Usage: server/scripts/smoke.sh
+# SHELFMARK_BIN=<path> tests an already built binary instead of building one.
 set -euo pipefail
 
 here="$(cd "$(dirname "$0")/.." && pwd)"
 work="$(mktemp -d)"
-bin="$work/shelfmark"
+bin="${SHELFMARK_BIN:-$work/shelfmark}"
 pid=""
 cleanup() {
   [ -n "$pid" ] && kill "$pid" 2>/dev/null && wait "$pid" 2>/dev/null || true
@@ -14,7 +15,7 @@ cleanup() {
 }
 trap cleanup EXIT
 
-(cd "$here" && CGO_ENABLED=0 go build -o "$bin" ./cmd/shelfmark)
+[ -n "${SHELFMARK_BIN:-}" ] || (cd "$here" && CGO_ENABLED=0 go build -o "$bin" ./cmd/shelfmark)
 port="$(python3 -c 'import socket; s=socket.socket(); s.bind(("127.0.0.1", 0)); print(s.getsockname()[1])')"
 base="http://127.0.0.1:$port"
 

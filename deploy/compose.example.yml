@@ -1,0 +1,24 @@
+# 用法：复制为 compose.yml，改掉占位值，docker compose up -d
+# 镜像先在仓库根目录构建：docker build -t shelfmark:latest .
+# 容器以 uid 65532 运行，首次启动前：mkdir -p data && sudo chown 65532:65532 data
+services:
+  shelfmark:
+    image: shelfmark:latest
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:8080:8080" # 只给本机反代用，不直接暴露
+    volumes:
+      - ./data:/data
+    environment:
+      SHELFMARK_BASE_URL: https://bm.example.com
+      # 网页可能从哪些地址打开（内网域名、公网域名都列上）
+      SHELFMARK_ALLOWED_ORIGINS: https://bm.example.com,https://bm.lan.example.com
+      # 反代所在网段，只有它们的 X-Forwarded-* / CF-Connecting-IP 才被采信
+      SHELFMARK_TRUSTED_PROXIES: 172.16.0.0/12
+      # 首次启动建管理员；不设则打开网页走“首次设置”
+      # SHELFMARK_ADMIN_USER: alice
+      # SHELFMARK_ADMIN_PASSWORD: change-me-please
+      # 前面套 Cloudflare Access 时才需要，见 README
+      # SHELFMARK_CF_ACCESS_TEAM_DOMAIN: example.cloudflareaccess.com
+      # SHELFMARK_CF_ACCESS_AUD: your-access-app-aud-tag
+      # SHELFMARK_CF_ACCESS_USERS: alice=alice@example.com
