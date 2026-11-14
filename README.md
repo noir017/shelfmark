@@ -139,3 +139,7 @@ docker buildx build --platform linux/amd64,linux/arm64 -t shelfmark:latest .
 ```
 
 设计见 `docs/design.md`，接口契约见 `api/openapi.yaml`（改接口先改契约）。
+
+## 许可证
+
+MIT，见 [LICENSE](LICENSE)。
