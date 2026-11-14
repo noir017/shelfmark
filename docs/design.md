@@ -230,6 +230,21 @@ items_fts(title, url, notes, tags, path)   -- rowid 映射到 (library_id, item_
 - 外链抓取（元数据、失效检测）：超时 15 秒，响应最多读 2 MiB，最多 5 次跳转，只允许 http/https。`SHELFMARK_FETCH_ALLOW_PRIVATE`（默认 true，自托管时内网书签也要能抓图标）设为 false 时拒绝私有/回环/链路本地地址（解析后校验，防 DNS 重绑定）。
 - 多用户隔离：所有查询带 `user_id`；库 slug 只在用户内唯一。
 
+### 7.1 反代与 Cloudflare Access
+
+部署形态：内网域名直连家里反代 → shelfmark；公网域名走 Cloudflare Tunnel，前面套 Cloudflare Access（交互式登录，浏览器用）。代码要同时适配两条路：
+
+- **多个来源**：`SHELFMARK_ALLOWED_ORIGINS`（逗号分隔，如 `https://bm.example.com,https://bm.lan.example.com`）。CSRF 的 Origin 校验对其中任一通过即可；为空时退回 `SHELFMARK_BASE_URL` 加请求 Host。`SHELFMARK_BASE_URL` 仍是“主地址”，用于生成 Floccus 配置。
+- **WebDAV 的 `Destination` 头**：只取路径部分判断是否在 `/dav/` 下，不要求主机名与请求 Host 相同（经多层反代后经常不同）。
+- **真实客户端 IP**：来自可信代理的请求，若带 `CF-Connecting-IP` 优先用它，其次 `X-Forwarded-For` 最左一个非可信地址。限流和日志都用它。
+- **Access 放行路径**：Floccus 和手机 Floccus App 做不了 Access 的交互登录，所以公网上 Access 对这些路径设为 bypass，靠 shelfmark 自己的令牌认证：`/dav/`、`/manifest.webmanifest`、`/icons/`（PWA 安装时浏览器取这两样不一定带 Cookie）。其余路径（网页、`/api/`）都在 Access 后面。
+- **插件过 Access**：插件请求带不上 Access 的登录 Cookie，改用 Access 服务令牌。插件设置里可选填 `CF-Access-Client-Id` / `CF-Access-Client-Secret`，每个 API 请求都带上这两个头；Access 应用为该服务令牌加一条 Service Auth 策略。
+- **密码类接口的二次把关**：请求带 `Cf-Ray` 头（说明经过了 Cloudflare，即来自公网）且配置了 Access 时，`/api/v1/setup`、`/api/v1/auth/login`、`/api/v1/auth/token`、`/api/v1/auth/password` 必须带有效的 Access JWT（请求头 `Cf-Access-Jwt-Assertion` 或 Cookie `CF_Authorization`），否则 403。用令牌认证的请求（Bearer、Basic）不受影响。内网直连的请求没有 `Cf-Ray`，照常用密码登录。
+- **JWT 校验**：RS256，公钥从 `https://<team 域>/cdn-cgi/access/certs` 获取并缓存（1 小时刷新，遇到未知 `kid` 立即刷新），校验 `aud`（`SHELFMARK_CF_ACCESS_AUD`，可多个）、`iss`（`https://<team 域>`）、`exp`/`nbf`（允许 60 秒偏差）。
+- **单点登录（可选）**：`SHELFMARK_CF_ACCESS_USERS=alice=alice@example.com,bob=bob@example.org` 把 Access 邮箱映射到 shelfmark 用户。网页登录页先调 `POST /api/v1/auth/access`：JWT 有效且邮箱有映射 → 直接建立会话，不用再输密码；否则显示密码登录。`SystemInfo.features.cfAccessSso` 表示是否启用。
+- **网页适配 Access 会话过期**：Access 会话过期后，API 请求会被重定向到 Access 登录页（跨域，`fetch` 表现为网络错误或拿到 HTML）。网页要识别这种情况，提示“Cloudflare 登录已过期”，点一下整页刷新重新登录；Service Worker 不得把 Access 登录页当成应用页面缓存，导航请求只在真正断网时才回退到缓存。`<link rel="manifest">` 加 `crossorigin="use-credentials"`。
+- **插件识别被 Access 拦截**：响应是跳转到 `*.cloudflareaccess.com`、或拿到 HTML、或 Access 的 403 → 提示“被 Cloudflare Access 拦截，请在设置里填服务令牌”。插件里的图标用带认证头的 `fetch` 取回再转成 blob URL，不能直接 `<img src>`。
+
 ## 8. REST API
 
 完整定义见 `api/openapi.yaml`（OpenAPI 3.1），它是服务端、网页、插件之间的契约。要点：
@@ -330,7 +345,7 @@ items_fts(title, url, notes, tags, path)   -- rowid 映射到 (library_id, item_
 - 不申请 `bookmarks` 权限，不读写浏览器原生书签。
 - 权限：`storage`、`contextMenus`、`activeTab`、`tabs`（读当前页 URL/标题）、`alarms`；`optional_host_permissions: ["http://*/*","https://*/*"]`，在设置服务器地址时只申请该源。
 - 功能：
-  - 设置页：服务器地址，用户名 + 密码登录（调 `POST /api/v1/auth/token` 生成 `api` 令牌，名字形如“插件 · Chrome · Linux”）或直接粘贴令牌；测试连接；默认收藏位置；是否接管新标签页内容。
+  - 设置页：服务器地址；可选的 Cloudflare Access 服务令牌（Client ID / Secret，见 7.1）；用户名 + 密码登录（调 `POST /api/v1/auth/token` 生成 `api` 令牌，名字形如“插件 · Chrome · Linux”）或直接粘贴令牌；测试连接；默认收藏位置；是否接管新标签页内容。
   - 弹窗：当前页是否已收藏（显示位置），收藏到库/文件夹（最近使用置顶、可搜索），编辑标题/标签/备注，删除；AI 开启时显示推荐。
   - 图标角标：当前页已收藏显示 ✓（`lookup` 结果按 URL 缓存 5 分钟）。
   - 右键菜单：“收藏此页”“收藏此链接”。
@@ -348,6 +363,10 @@ items_fts(title, url, notes, tags, path)   -- rowid 映射到 (library_id, item_
 | `SHELFMARK_DATA_DIR` | `./data`（容器内 `/data`） | 数据库、备份目录 |
 | `SHELFMARK_BASE_URL` | 空 | 对外地址，用于生成 Floccus 配置、Cookie Secure 判断、Origin 校验 |
 | `SHELFMARK_TRUSTED_PROXIES` | 空 | 可信反代 CIDR，逗号分隔 |
+| `SHELFMARK_ALLOWED_ORIGINS` | 空 | 允许的网页来源，逗号分隔（内网域名、公网域名都列上） |
+| `SHELFMARK_CF_ACCESS_TEAM_DOMAIN` | 空 | Access 团队域，如 `example.cloudflareaccess.com`；为空则不启用 7.1 的 Access 相关逻辑 |
+| `SHELFMARK_CF_ACCESS_AUD` | 空 | Access 应用的 AUD 标签，逗号分隔可多个 |
+| `SHELFMARK_CF_ACCESS_USERS` | 空 | 单点登录映射 `用户名=邮箱`，逗号分隔 |
 | `SHELFMARK_ADMIN_USER` / `SHELFMARK_ADMIN_PASSWORD` | 空 | 首次启动建管理员 |
 | `SHELFMARK_DAV_AUTO_CREATE` | `true` | Floccus 上传到不存在的库文件时自动建库 |
 | `SHELFMARK_GUARD_RATIO` / `SHELFMARK_GUARD_MIN_ITEMS` | `0.5` / `20` | 防误删阈值，比例 0 关闭 |
@@ -385,7 +404,7 @@ shelfmark version
 - 多架构 `linux/amd64`、`linux/arm64`。
 - `deploy/compose.example.yml`：一个服务、一个卷、端口只绑 `127.0.0.1`，环境变量示例用占位值。
 - 运维端点：`/healthz`（无认证，返回 `ok` 和版本）、`/metrics`（Prometheus：各库书签数、DAV 请求数按方法/状态、上传应用次数按结果、拦截次数、修订数、HTTP 时延直方图、任务耗时与结果）。
-- 反代说明写进 README：如果前面有统一登录网关，`/dav/` 和 `/api/` 必须放行，否则 Floccus、插件、手机分享会被拦。
+- 反代说明写进 README：前面套 Cloudflare Access 时按 7.1 配 bypass 路径和服务令牌；其它统一登录网关同理，`/dav/` 必须放行，插件要能带上网关认可的凭据。
 
 ## 17. 测试
 

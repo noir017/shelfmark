@@ -91,6 +91,21 @@ paths:
         '401': { $ref: '#/components/responses/Unauthorized' }
         '429': { $ref: '#/components/responses/RateLimited' }
 
+  /api/v1/auth/access:
+    post:
+      tags: [auth]
+      operationId: loginWithAccess
+      summary: 用 Cloudflare Access 身份换会话（单点登录）。需要有效的 Access JWT 且邮箱在 SHELFMARK_CF_ACCESS_USERS 里有映射
+      security: []
+      responses:
+        '200':
+          description: 已登录（Set-Cookie）
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Me' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '503': { $ref: '#/components/responses/Unavailable' }
+
   /api/v1/auth/logout:
     post:
       tags: [auth]
@@ -1208,13 +1223,14 @@ components:
         baseUrl: { type: [string, 'null'] }
         features:
           type: object
-          required: [ai, metrics, linkcheck, metadata, autoCreateLibrary]
+          required: [ai, metrics, linkcheck, metadata, autoCreateLibrary, cfAccessSso]
           properties:
             ai: { type: boolean }
             metrics: { type: boolean }
             linkcheck: { type: boolean }
             metadata: { type: boolean }
             autoCreateLibrary: { type: boolean }
+            cfAccessSso: { type: boolean, description: 已配置 Access 单点登录映射 }
 
     User:
       type: object
@@ -1230,7 +1246,7 @@ components:
       required: [user, authMethod]
       properties:
         user: { $ref: '#/components/schemas/User' }
-        authMethod: { type: string, enum: [session, token] }
+        authMethod: { type: string, enum: [session, token, access] }
 
     Scope:
       type: string
