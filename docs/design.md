@@ -237,13 +237,13 @@ items_fts(title, url, notes, tags, path)   -- rowid 映射到 (library_id, item_
 - **多个来源**：`SHELFMARK_ALLOWED_ORIGINS`（逗号分隔，如 `https://bm.example.com,https://bm.lan.example.com`）。CSRF 的 Origin 校验对其中任一通过即可；为空时退回 `SHELFMARK_BASE_URL` 加请求 Host。`SHELFMARK_BASE_URL` 仍是“主地址”，用于生成 Floccus 配置。
 - **WebDAV 的 `Destination` 头**：只取路径部分判断是否在 `/dav/` 下，不要求主机名与请求 Host 相同（经多层反代后经常不同）。
 - **真实客户端 IP**：来自可信代理的请求，若带 `CF-Connecting-IP` 优先用它，其次 `X-Forwarded-For` 最左一个非可信地址。限流和日志都用它。
-- **Access 放行路径**：Floccus 和手机 Floccus App 做不了 Access 的交互登录，所以公网上 Access 对这些路径设为 bypass，靠 shelfmark 自己的令牌认证：`/dav/`、`/manifest.webmanifest`、`/icons/`（PWA 安装时浏览器取这两样不一定带 Cookie）。其余路径（网页、`/api/`）都在 Access 后面。
-- **插件过 Access**：插件请求带不上 Access 的登录 Cookie，改用 Access 服务令牌。插件设置里可选填 `CF-Access-Client-Id` / `CF-Access-Client-Secret`，每个 API 请求都带上这两个头；Access 应用为该服务令牌加一条 Service Auth 策略。
-- **密码类接口的二次把关**：请求带 `Cf-Ray` 头（说明经过了 Cloudflare，即来自公网）且配置了 Access 时，`/api/v1/setup`、`/api/v1/auth/login`、`/api/v1/auth/token`、`/api/v1/auth/password` 必须带有效的 Access JWT（请求头 `Cf-Access-Jwt-Assertion` 或 Cookie `CF_Authorization`），否则 403。用令牌认证的请求（Bearer、Basic）不受影响。内网直连的请求没有 `Cf-Ray`，照常用密码登录。
+- **Access 放行路径**：Floccus、手机 Floccus App 和插件做不了 Access 的交互登录，所以公网上 Access 对这些路径设为 bypass，靠 shelfmark 自己的认证（令牌或网页会话）：`/dav/`、`/api/`、`/manifest.webmanifest`、`/icons/`（PWA 安装时浏览器取后两样不一定带 Cookie）。其余路径（网页页面和静态资源）都在 Access 后面。
+- **插件过 Access**：`/api/` 放行后插件只用 shelfmark 的 `api` 令牌，不需要 Access 服务令牌。在公网上插件用“粘贴令牌”登录（令牌在网页“设置 → 设备与令牌”里生成），用户名密码登录会被下一条的二次把关拒绝。插件设置里仍保留可选的 `CF-Access-Client-Id` / `CF-Access-Client-Secret`，只在 `/api/` 也放在 Access 后面的部署里才需要：填了就每个 API 请求都带上这两个头，Access 应用为该服务令牌加一条 Service Auth 策略。
+- **密码类接口的二次把关**：`/api/` 放行后密码登录不再有 Access 挡在前面，所以请求带 `Cf-Ray` 头（说明经过了 Cloudflare，即来自公网）且配置了 Access 时，`/api/v1/setup`、`/api/v1/auth/login`、`/api/v1/auth/token`、`/api/v1/auth/password` 必须带有效的 Access JWT（请求头 `Cf-Access-Jwt-Assertion` 或 Cookie `CF_Authorization`），否则 403。网页是过了 Access 才打开的，同域 Cookie 里有 `CF_Authorization`，照常能登录；插件、脚本没有它，只能用令牌。用令牌认证的请求（Bearer、Basic）不受影响。内网直连的请求没有 `Cf-Ray`，照常用密码登录。
 - **JWT 校验**：RS256，公钥从 `https://<team 域>/cdn-cgi/access/certs` 获取并缓存（1 小时刷新，遇到未知 `kid` 立即刷新），校验 `aud`（`SHELFMARK_CF_ACCESS_AUD`，可多个）、`iss`（`https://<team 域>`）、`exp`/`nbf`（允许 60 秒偏差）。
 - **单点登录（可选）**：`SHELFMARK_CF_ACCESS_USERS=alice=alice@example.com,bob=bob@example.org` 把 Access 邮箱映射到 shelfmark 用户。网页登录页先调 `POST /api/v1/auth/access`：JWT 有效且邮箱有映射 → 直接建立会话，不用再输密码；否则显示密码登录。`SystemInfo.features.cfAccessSso` 表示是否启用。
-- **网页适配 Access 会话过期**：Access 会话过期后，API 请求会被重定向到 Access 登录页（跨域，`fetch` 表现为网络错误或拿到 HTML）。网页要识别这种情况，提示“Cloudflare 登录已过期”，点一下整页刷新重新登录；Service Worker 不得把 Access 登录页当成应用页面缓存，导航请求只在真正断网时才回退到缓存。`<link rel="manifest">` 加 `crossorigin="use-credentials"`。
-- **插件识别被 Access 拦截**：响应是跳转到 `*.cloudflareaccess.com`、或拿到 HTML、或 Access 的 403 → 提示“被 Cloudflare Access 拦截，请在设置里填服务令牌”。插件里的图标用带认证头的 `fetch` 取回再转成 blob URL，不能直接 `<img src>`。
+- **网页适配 Access 会话过期**：Access 会话过期后，页面和静态资源请求会被重定向到 Access 登录页；`/api/` 放行时 API 照常可用，但密码登录会因 `CF_Authorization` 过期被 403；`/api/` 也在 Access 后面的部署里，API 请求同样会被重定向（跨域，`fetch` 表现为网络错误或拿到 HTML）。网页要识别这种情况，提示“Cloudflare 登录已过期”，点一下整页刷新重新登录；Service Worker 不得把 Access 登录页当成应用页面缓存，导航请求只在真正断网时才回退到缓存。`<link rel="manifest">` 加 `crossorigin="use-credentials"`。
+- **插件识别被 Access 拦截**（`/api/` 也在 Access 后面的部署）：响应是跳转到 `*.cloudflareaccess.com`、或拿到 HTML、或 Access 的 403 → 提示“被 Cloudflare Access 拦截，请在设置里填服务令牌”。插件里的图标用带认证头的 `fetch` 取回再转成 blob URL，不能直接 `<img src>`。
 
 ## 8. REST API
 
@@ -404,7 +404,7 @@ shelfmark version
 - 多架构 `linux/amd64`、`linux/arm64`。
 - `deploy/compose.example.yml`：一个服务、一个卷、端口只绑 `127.0.0.1`，环境变量示例用占位值。
 - 运维端点：`/healthz`（无认证，返回 `ok` 和版本）、`/metrics`（Prometheus：各库书签数、DAV 请求数按方法/状态、上传应用次数按结果、拦截次数、修订数、HTTP 时延直方图、任务耗时与结果）。
-- 反代说明写进 README：前面套 Cloudflare Access 时按 7.1 配 bypass 路径和服务令牌；其它统一登录网关同理，`/dav/` 必须放行，插件要能带上网关认可的凭据。
+- 反代说明写进 README：前面套 Cloudflare Access 时按 7.1 配 bypass 路径（`/dav/`、`/api/`、`/manifest.webmanifest`、`/icons/`），插件用 shelfmark 令牌；其它统一登录网关同理，`/dav/` 必须放行，`/api/` 不放行时插件要能带上网关认可的凭据。
 
 ## 17. 测试
 
