@@ -9,7 +9,7 @@ import { normalizeUrl } from '../src/lib/url.ts'
 import { cleanTags, diffSnaps, HttpError, nowIso, type MLib, type MockDB, type MUser, type MItem, type MPending, type Snap } from './db.ts'
 import { detectFormat, parseHtml, parseJson, parseXbel, toHtml, toXbel, type FNode } from './formats.ts'
 
-type AuthMethod = 'session' | 'access' | 'token'
+type AuthMethod = 'lan' | 'token'
 
 interface Ctx {
   request: Request
@@ -29,9 +29,6 @@ const fail = (status: number, code: string, message: string, details?: Record<st
 function errorResponse(e: HttpError) {
   return json({ error: { code: e.code, message: e.message, ...(e.details ? { details: e.details } : {}) } }, e.status, e.headers)
 }
-
-const COOKIE = 'shelfmark_session'
-const sessionCookie = (sid: string) => `${COOKIE}=${sid}; Path=/; HttpOnly; SameSite=Lax; Max-Age=${30 * 86400}`
 
 async function body<T>(request: Request): Promise<T> {
   const text = await request.text()
@@ -62,12 +59,8 @@ export function createHandlers(getDb: () => MockDB): HttpHandler[] {
       const user = d.users.find((u) => u.id === t.userId)
       return user ? { user, auth: 'token', sid: null } : null
     }
-    const cookie = request.headers.get('cookie') ?? ''
-    const sid = cookie.split(/;\s*/).find((c) => c.startsWith(COOKIE + '='))?.slice(COOKIE.length + 1)
-    if (!sid) return null
-    const s = d.sessions.get(sid)
-    const user = s && d.users.find((u) => u.id === s.userId)
-    return user ? { user, auth: s!.method, sid } : null
+    const user = d.users[0]
+    return user ? { user, auth: 'lan', sid: null } : null
   }
 
   type Fn = (c: Ctx) => Out | Promise<Out>
@@ -244,79 +237,23 @@ export function createHandlers(getDb: () => MockDB): HttpHandler[] {
     // ---------- system / auth ----------
     pub('get', '/healthz', () => new HttpResponse('ok 0.0.0-mock', { headers: { 'Content-Type': 'text/plain' } })),
     pub('get', '/api/v1/system/info', () => ({
-      version: '0.0.0-mock', commit: 'mock', needsSetup: db().users.length === 0, davPath: '/dav/', baseUrl: null,
-      features: { ai: db().config.aiEnabled, metrics: false, linkcheck: true, metadata: true, autoCreateLibrary: true, cfAccessSso: db().config.cfAccessSso },
+      version: '0.0.0-mock', commit: 'mock', davPath: '/dav/', baseUrl: null,
+      features: { ai: db().config.aiEnabled, metrics: false, linkcheck: true, metadata: true, autoCreateLibrary: true, cfAccess: db().config.cfAccessSso },
     })),
-    pub('post', '/api/v1/setup', async ({ request }) => {
-      const d = db()
-      if (d.users.length) throw fail(409, 'conflict', '已经设置过管理员')
-      const b = await body<{ username?: string; password?: string }>(request)
-      if (!b.username || !/^[A-Za-z0-9._-]{1,64}$/.test(b.username)) throw fail(422, 'validation', '用户名不合法', { username: 'pattern' })
-      if (!b.password || b.password.length < 8) throw fail(422, 'validation', '密码至少 8 位', { password: 'minLength' })
-      const u = d.addUser(b.username, b.password, true)
-      const sid = d.newSession(u.id)
-      return json(me(u, 'session'), 201, { 'Set-Cookie': sessionCookie(sid) })
-    }),
-    pub('post', '/api/v1/auth/login', async ({ request }) => {
-      const d = db()
-      if (d.loginFailures >= 10) throw new HttpError(429, 'rate_limited', '失败次数过多，请 15 分钟后再试', undefined, { 'Retry-After': '900' })
-      const b = await body<{ username?: string; password?: string }>(request)
-      const u = d.users.find((x) => x.username === b.username && x.password === b.password)
-      if (!u) {
-        d.loginFailures++
-        throw fail(401, 'unauthorized', '用户名或密码错误')
-      }
-      const sid = d.newSession(u.id)
-      return json(me(u, 'session'), 200, { 'Set-Cookie': sessionCookie(sid) })
-    }),
-    pub('post', '/api/v1/auth/access', () => {
-      const d = db()
-      if (!d.config.cfAccessSso) throw fail(503, 'unavailable', '未启用 Access 单点登录')
-      const u = d.users.find((x) => x.username === d.config.accessUser)
-      if (!u) throw fail(401, 'unauthorized', 'Access 身份无效或没有映射')
-      const sid = d.newSession(u.id, 'access')
-      return json(me(u, 'access'), 200, { 'Set-Cookie': sessionCookie(sid) })
-    }),
-    pub('post', '/api/v1/auth/token', async ({ request }) => {
-      const d = db()
-      const b = await body<{ username?: string; password?: string; name?: string; scopes?: Array<'api' | 'dav'> }>(request)
-      const u = d.users.find((x) => x.username === b.username && x.password === b.password)
-      if (!u) throw fail(401, 'unauthorized', '用户名或密码错误')
-      const t = d.createToken(u.id, b.name ?? 'token', b.scopes?.length ? b.scopes : ['api'])
-      return json({ ...d.publicToken(t), token: t.token }, 201)
-    }),
-    wrap('post', '/api/v1/auth/logout', (c) => {
-      if (c.sid) db().sessions.delete(c.sid)
-      return new HttpResponse(null, { status: 204, headers: { 'Set-Cookie': `${COOKIE}=; Path=/; HttpOnly; Max-Age=0` } })
-    }),
     wrap('get', '/api/v1/auth/me', (c) => me(c.user, c.auth)),
-    wrap('post', '/api/v1/auth/password', async (c) => {
-      const b = await body<{ currentPassword?: string; newPassword?: string }>(c.request)
-      if (b.currentPassword !== c.user.password) throw fail(401, 'unauthorized', '当前密码不对')
-      if (!b.newPassword || b.newPassword.length < 8) throw fail(422, 'validation', '新密码至少 8 位', { newPassword: 'minLength' })
-      c.user.password = b.newPassword
-      for (const [k, s] of db().sessions) if (s.userId === c.user.id && k !== c.sid) db().sessions.delete(k)
-      return null
-    }),
-
     // ---------- users ----------
     wrap('get', '/api/v1/users', () => db().users.map(userOut), { admin: true }),
     wrap('post', '/api/v1/users', async (c) => {
-      const b = await body<{ username?: string; password?: string; isAdmin?: boolean }>(c.request)
+      const b = await body<{ username?: string; isAdmin?: boolean }>(c.request)
       if (!b.username || !/^[A-Za-z0-9._-]{1,64}$/.test(b.username)) throw fail(422, 'validation', '用户名不合法', { username: 'pattern' })
-      if (!b.password || b.password.length < 8) throw fail(422, 'validation', '密码至少 8 位', { password: 'minLength' })
       if (db().users.some((u) => u.username === b.username)) throw fail(409, 'conflict', '用户名已存在')
-      return json(userOut(db().addUser(b.username, b.password, !!b.isAdmin)), 201)
+      return json(userOut(db().addUser(b.username, '', !!b.isAdmin)), 201)
     }, { admin: true }),
     wrap('patch', '/api/v1/users/:userId', async (c) => {
       const d = db()
       const u = d.users.find((x) => x.id === int(c.params.userId, 'userId'))
       if (!u) throw fail(404, 'not_found', '用户不存在')
-      const b = await body<{ password?: string; isAdmin?: boolean }>(c.request)
-      if (b.password !== undefined) {
-        if (b.password.length < 8) throw fail(422, 'validation', '密码至少 8 位', { password: 'minLength' })
-        u.password = b.password
-      }
+      const b = await body<{ isAdmin?: boolean }>(c.request)
       if (b.isAdmin === false && u.isAdmin && d.users.filter((x) => x.isAdmin).length === 1) throw fail(409, 'conflict', '不能取消最后一个管理员')
       if (b.isAdmin !== undefined) u.isAdmin = b.isAdmin
       return userOut(u)

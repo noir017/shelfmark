@@ -2,7 +2,6 @@ package server
 
 import (
 	"bytes"
-	"context"
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
@@ -19,12 +18,9 @@ import (
 	"testing/fstest"
 	"time"
 
-	"shelfmark/internal/auth"
 	"shelfmark/internal/config"
 	"shelfmark/internal/store"
 )
-
-func init() { auth.Argon2Params.Memory = 1024 }
 
 type env struct {
 	t        *testing.T
@@ -56,6 +52,7 @@ func newEnv(t *testing.T, mutate func(*config.Config)) *env {
 	cfg.FetchMetadata = false
 	cfg.LinkcheckInterval = 0
 	cfg.Metrics = true
+	cfg.DefaultUser = "alice"
 	if mutate != nil {
 		mutate(cfg)
 	}
@@ -145,10 +142,9 @@ func (e *env) dav(method, name string, body []byte, headers map[string]string) r
 	return e.do(method, "/dav/"+name, body, h)
 }
 
-// setup creates alice (admin, logged in) plus a dav and an api token.
+// setup issues a dav and an api token for alice (created at startup).
 func (e *env) setup() {
 	e.t.Helper()
-	e.expect(e.api("POST", "/api/v1/setup", map[string]string{"username": "alice", "password": "correct horse"}), 201)
 	var tok struct{ Token string }
 	e.expect(e.api("POST", "/api/v1/tokens", map[string]any{"name": "laptop", "scopes": []string{"dav"}}), 201).json(e.t, &tok)
 	e.davToken = tok.Token
@@ -411,7 +407,7 @@ func TestGuardAndApprove(t *testing.T) {
 func TestWebFlowRevisionsAndRestore(t *testing.T) {
 	e := newEnv(t, nil)
 	e.setup()
-	// CSRF: missing header and foreign origin are refused for cookie sessions
+	// CSRF: missing header and foreign origin are refused for non-token requests
 	e.expect(e.do("POST", "/api/v1/libraries/bookmarks/items", map[string]any{"type": "folder", "title": "x"}, nil), 403)
 	e.expect(e.do("POST", "/api/v1/libraries/bookmarks/items", map[string]any{"type": "folder", "title": "x"},
 		map[string]string{"X-Requested-With": "shelfmark", "Origin": "https://evil.example.com"}), 403)
@@ -541,9 +537,12 @@ func TestWebFlowRevisionsAndRestore(t *testing.T) {
 	if r := e.do("GET", "/metrics", nil, nil); !bytes.Contains(r.body, []byte(`shelfmark_library_bookmarks{user="alice",library="bookmarks"} 2`)) {
 		t.Fatalf("metrics %s", r.body)
 	}
-	// logout
-	e.expect(e.api("POST", "/api/v1/auth/logout", nil), 204)
-	e.expect(e.api("GET", "/api/v1/auth/me", nil), 401)
+	// 没有会话可退：内网请求始终是默认用户
+	var me struct{ AuthMethod string }
+	e.expect(e.api("GET", "/api/v1/auth/me", nil), 200).json(t, &me)
+	if me.AuthMethod != "lan" {
+		t.Fatalf("method %s", me.AuthMethod)
+	}
 }
 
 func TestTransfer(t *testing.T) {
@@ -592,26 +591,19 @@ func TestTransfer(t *testing.T) {
 	e.expect(e.api("POST", fmt.Sprintf("/api/v1/libraries/work/items/%d/transfer", res.Item.ID), map[string]any{"library": "bookmarks", "parentId": 999}), 422)
 }
 
-func TestLoginRateLimitAndTokens(t *testing.T) {
+func TestTokensAndFloccus(t *testing.T) {
 	e := newEnv(t, nil)
 	e.setup()
-	for i := 0; i < 10; i++ {
-		e.expect(e.do("POST", "/api/v1/auth/login", map[string]string{"username": "alice", "password": "wrong password"}, nil), 401)
-	}
-	r := e.expect(e.do("POST", "/api/v1/auth/login", map[string]string{"username": "alice", "password": "correct horse"}, nil), 429)
-	if r.header.Get("Retry-After") == "" {
-		t.Fatal("Retry-After missing")
-	}
-	e.srv.Auth.Limiter = auth.NewLimiter()
-	// the extension's login: chrome-extension origin, no cookie
 	var tok struct{ Token string }
-	e.expect(e.do("POST", "/api/v1/auth/token", map[string]any{"username": "alice", "password": "correct horse", "name": "插件 · Chrome · Linux", "scopes": []string{"api"}},
-		map[string]string{"Origin": "chrome-extension://abc"}), 201).json(t, &tok)
+	e.expect(e.api("POST", "/api/v1/tokens", map[string]any{"name": "插件 · Chrome · Linux", "scopes": []string{"api"}}), 201).json(t, &tok)
 	var me struct{ AuthMethod string }
 	e.expect(e.do("GET", "/api/v1/auth/me", nil, map[string]string{"Authorization": "Bearer " + tok.Token}), 200).json(t, &me)
 	if me.AuthMethod != "token" {
 		t.Fatalf("method %s", me.AuthMethod)
 	}
+	// 令牌 scope 不够时 403
+	bad := e.expect(e.do("GET", "/api/v1/libraries", nil, map[string]string{"Authorization": "Bearer " + e.davToken}), 403)
+	_ = bad
 	// Floccus setup returns an importable profile array
 	var fs struct {
 		DavURL  string
@@ -622,8 +614,6 @@ func TestLoginRateLimitAndTokens(t *testing.T) {
 		t.Fatalf("floccus %+v", fs)
 	}
 	e.expect(e.do("GET", "/dav/bookmarks.xbel", nil, map[string]string{"Authorization": "Basic " + base64.StdEncoding.EncodeToString([]byte("alice:"+fs.Profile[0]["password"].(string)))}), 200)
-	// password change with the CSRF header
-	e.expect(e.api("POST", "/api/v1/auth/password", map[string]string{"currentPassword": "correct horse", "newPassword": "battery staple"}), 204)
-	e.expect(e.do("POST", "/api/v1/auth/login", map[string]string{"username": "alice", "password": "battery staple"}, nil), 200)
-	_ = context.Background
+	// 内网不带凭据的 DAV 请求直接落到默认用户
+	e.expect(e.do("GET", "/dav/bookmarks.xbel", nil, nil), 200)
 }

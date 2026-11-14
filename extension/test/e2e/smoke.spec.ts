@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test';
-import { ALICE, FAKE_VERSION, startFakeServer } from '../fake-server/server.mjs';
+import { FAKE_VERSION, startFakeServer } from '../fake-server/server.mjs';
 import { badgeText, launch, msg, tabIdOf } from '../helpers/browser';
 
 test('settings login → popup save → badge → new tab (online and offline)', async () => {
@@ -9,18 +9,15 @@ test('settings login → popup save → badge → new tab (online and offline)',
   try {
     expect(await sw.evaluate(() => chrome.i18n.getUILanguage())).toMatch(/^zh/);
 
-    await test.step('options: log in with username and password', async () => {
+    await test.step('options: paste an API token', async () => {
       const page = await context.newPage();
       await page.goto(`${base}/options.html`);
       await expect(page.locator('h1')).toContainText(msg('optionsTitle'));
       await page.fill('#server-url', server.url);
-      await page.fill('#username', ALICE.username);
-      await page.fill('#password', ALICE.password);
-      await page.click('#login-btn');
+      await page.fill('#token', server.issueToken());
+      await page.click('#token-btn');
       await expect(page.locator('#conn-status')).toHaveText(`已连接：alice（shelfmark ${FAKE_VERSION}）。`);
-      const names = [...server.state.tokens.values()].map((t) => t.name);
-      expect(names).toContain('插件 · Chrome · Linux');
-      await expect(page.locator('#password')).toHaveValue('');
+      await expect(page.locator('#token')).toHaveValue('');
 
       const tools = server.folderId('bookmarks', '工具');
       await expect(page.locator('#default-save')).toBeEnabled();
@@ -147,18 +144,17 @@ test('Cloudflare Access: clear hint without a service token, works with one', as
     const page = await ext.context.newPage();
     await page.goto(`${ext.base}/options.html`);
     await page.fill('#server-url', server.url);
-    await page.fill('#username', ALICE.username);
-    await page.fill('#password', ALICE.password);
-    await page.click('#login-btn');
+    await page.fill('#token', server.issueToken());
+    await page.click('#token-btn');
     await expect(page.locator('#conn-status')).toHaveText(msg('errAccessBlocked'));
 
     await page.locator('#access-box summary').click();
     await page.fill('#access-id', 'cid.access');
     await page.fill('#access-secret', 'access-secret');
-    await page.click('#login-btn');
+    await page.click('#token-btn');
     await expect(page.locator('#conn-status')).toContainText('alice');
-    const tokenCall = server.state.requests.filter((r) => r.path === '/api/v1/auth/token').at(-1);
-    expect(tokenCall?.headers['cf-access-client-id']).toBe('cid.access');
+    const meCall = server.state.requests.filter((r) => r.path === '/api/v1/auth/me').at(-1);
+    expect(meCall?.headers['cf-access-client-id']).toBe('cid.access');
 
     // New tab: favicons are fetched with the Access headers and shown as blob: URLs.
     const nt = await ext.context.newPage();

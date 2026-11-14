@@ -25,8 +25,9 @@ type Config struct {
 	CFAccessAUD        []string
 	CFAccessUsers      map[string]string // username -> email (lowercase)
 
-	AdminUser     string
-	AdminPassword string
+	// DefaultUser is the identity of requests that carry no credentials and
+	// did not come through Cloudflare. Empty means the first user created.
+	DefaultUser string
 
 	DAVAutoCreate bool
 	GuardRatio    float64
@@ -60,8 +61,8 @@ var (
 
 var keys = []string{
 	"listen", "data_dir", "base_url", "trusted_proxies", "allowed_origins",
-	"cf_access_team_domain", "cf_access_aud", "cf_access_users",
-	"admin_user", "admin_password", "dav_auto_create", "guard_ratio", "guard_min_items",
+	"cf_access_team_domain", "cf_access_aud", "cf_access_users", "default_user",
+	"dav_auto_create", "guard_ratio", "guard_min_items",
 	"revision_keep_days", "revision_keep_daily_days", "backup_keep", "linkcheck_interval",
 	"fetch_metadata", "fetch_allow_private", "fetch_user_agent",
 	"ai_base_url", "ai_api_key", "ai_model", "metrics", "metrics_token", "log_level", "log_format",
@@ -184,10 +185,7 @@ func (c *Config) apply(v map[string]string) error {
 	c.BaseURL = strings.TrimRight(c.BaseURL, "/")
 	str("cf_access_team_domain", &c.CFAccessTeamDomain)
 	c.CFAccessTeamDomain = strings.TrimRight(strings.TrimPrefix(strings.TrimPrefix(c.CFAccessTeamDomain, "https://"), "http://"), "/")
-	str("admin_user", &c.AdminUser)
-	if s, ok := v["admin_password"]; ok {
-		c.AdminPassword = s
-	}
+	str("default_user", &c.DefaultUser)
 	str("fetch_user_agent", &c.FetchUserAgent)
 	str("ai_base_url", &c.AIBaseURL)
 	c.AIBaseURL = strings.TrimRight(c.AIBaseURL, "/")
@@ -281,11 +279,6 @@ func (c *Config) AIEnabled() bool { return c.AIBaseURL != "" && c.AIModel != "" 
 
 // AccessEnabled reports whether Cloudflare Access JWT checks are configured.
 func (c *Config) AccessEnabled() bool { return c.CFAccessTeamDomain != "" }
-
-// AccessSSO reports whether Access single sign-on is available.
-func (c *Config) AccessSSO() bool {
-	return c.AccessEnabled() && len(c.CFAccessAUD) > 0 && len(c.CFAccessUsers) > 0
-}
 
 // BaseOrigin is scheme://host of BaseURL, or "".
 func (c *Config) BaseOrigin() string {

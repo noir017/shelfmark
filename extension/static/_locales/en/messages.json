@@ -77,9 +77,6 @@
   "errPermissionDenied": {
     "message": "Access to the server was not granted."
   },
-  "errLoginFailed": {
-    "message": "Wrong username or password."
-  },
   "omniboxDefault": {
     "message": "Search bookmarks: %s"
   },
@@ -197,21 +194,6 @@
   "accessHelp": {
     "message": "Only needed when the server sits behind Cloudflare Access. Every request then sends CF-Access-Client-Id / CF-Access-Client-Secret; add a Service Auth policy for this token in Access."
   },
-  "loginWithPassword": {
-    "message": "Username and password"
-  },
-  "loginWithToken": {
-    "message": "Paste a token"
-  },
-  "fieldUsername": {
-    "message": "Username"
-  },
-  "fieldPassword": {
-    "message": "Password"
-  },
-  "fieldDeviceName": {
-    "message": "Device name"
-  },
   "login": {
     "message": "Log in"
   },
@@ -265,9 +247,6 @@
   },
   "saved": {
     "message": "Saved"
-  },
-  "devicePrefix": {
-    "message": "Extension"
   },
   "connNotLoggedIn": {
     "message": "Not logged in."

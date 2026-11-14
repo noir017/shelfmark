@@ -1,5 +1,5 @@
 // Smoke run against the real shelfmark binary (started by playwright.real.config.ts).
-// Covers: password login → popup save → badge → move to another library (transfer) → new tab → delete.
+// Covers: token login → popup save → badge → move to another library (transfer) → new tab → delete.
 import { expect, request, test, type APIRequestContext } from '@playwright/test';
 import { createServer, type Server } from 'node:http';
 import type { AddressInfo } from 'node:net';
@@ -7,8 +7,6 @@ import type { LookupResult } from '../../src/lib/types';
 import { badgeText, launch, msg, tabIdOf } from '../helpers/browser';
 
 const base = process.env.SHELFMARK_E2E_URL!;
-const user = process.env.SHELFMARK_E2E_USER!;
-const password = process.env.SHELFMARK_E2E_PASSWORD!;
 
 /** A page to bookmark, on its own port. */
 async function pageServer(): Promise<{ url: string; server: Server }> {
@@ -21,9 +19,8 @@ async function pageServer(): Promise<{ url: string; server: Server }> {
 }
 
 async function apiSession(): Promise<APIRequestContext> {
-  const api = await request.newContext({ baseURL: base, extraHTTPHeaders: { 'X-Requested-With': 'shelfmark' } });
-  expect((await api.post('/api/v1/auth/login', { data: { username: user, password } })).ok()).toBeTruthy();
-  return api;
+  // 内网直连：不需要登录，直接就是默认用户。
+  return request.newContext({ baseURL: base, extraHTTPHeaders: { 'X-Requested-With': 'shelfmark' } });
 }
 
 async function json<T>(r: Promise<import('@playwright/test').APIResponse>): Promise<T> {
@@ -32,9 +29,10 @@ async function json<T>(r: Promise<import('@playwright/test').APIResponse>): Prom
   return (await res.json()) as T;
 }
 
-test('real server: login → save → transfer to another library → new tab → delete', async () => {
+test('real server: token login → save → transfer to another library → new tab → delete', async () => {
   const api = await apiSession();
   const info = await json<{ version: string }>(api.get('/api/v1/system/info'));
+  const created = await json<{ token: string }>(api.post('/api/v1/tokens', { data: { name: '插件 · Chrome · Linux', scopes: ['api'] } }));
   const libs = await json<{ slug: string; name: string }[]>(api.get('/api/v1/libraries'));
   const mainName = libs.find((l) => l.slug === 'bookmarks')!.name;
   await json(api.post('/api/v1/libraries/bookmarks/items', { data: { type: 'folder', title: '阅读' } }));
@@ -47,14 +45,13 @@ test('real server: login → save → transfer to another library → new tab �
   const { context, sw } = ext;
   const extBase = ext.base;
   try {
-    await test.step('options: log in with username and password', async () => {
+    await test.step('options: paste the API token', async () => {
       const page = await context.newPage();
       await page.goto(`${extBase}/options.html`);
       await page.fill('#server-url', base);
-      await page.fill('#username', user);
-      await page.fill('#password', password);
-      await page.click('#login-btn');
-      await expect(page.locator('#conn-status')).toHaveText(`已连接：${user}（shelfmark ${info.version}）。`);
+      await page.fill('#token', created.token);
+      await page.click('#token-btn');
+      await expect(page.locator('#conn-status')).toContainText(`（shelfmark ${info.version}）`);
       const tokens = await json<{ name: string; scopes: string[] }[]>(api.get('/api/v1/tokens'));
       expect(tokens).toContainEqual(expect.objectContaining({ name: '插件 · Chrome · Linux', scopes: ['api'] }));
       await page.close();

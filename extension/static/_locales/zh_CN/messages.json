@@ -77,9 +77,6 @@
   "errPermissionDenied": {
     "message": "没有获得访问该服务器的权限。"
   },
-  "errLoginFailed": {
-    "message": "用户名或密码错误。"
-  },
   "omniboxDefault": {
     "message": "搜索书签：%s"
   },
@@ -197,21 +194,6 @@
   "accessHelp": {
     "message": "服务器在 Cloudflare Access 后面时才需要。填了之后每个请求都带 CF-Access-Client-Id / CF-Access-Client-Secret，Access 应用里要为该服务令牌加 Service Auth 策略。"
   },
-  "loginWithPassword": {
-    "message": "用户名密码登录"
-  },
-  "loginWithToken": {
-    "message": "粘贴令牌"
-  },
-  "fieldUsername": {
-    "message": "用户名"
-  },
-  "fieldPassword": {
-    "message": "密码"
-  },
-  "fieldDeviceName": {
-    "message": "设备名"
-  },
   "login": {
     "message": "登录"
   },
@@ -265,9 +247,6 @@
   },
   "saved": {
     "message": "已保存"
-  },
-  "devicePrefix": {
-    "message": "插件"
   },
   "connNotLoggedIn": {
     "message": "未登录。"

@@ -3,6 +3,7 @@ package auth
 import (
 	"context"
 	"errors"
+	"fmt"
 	"net/http"
 	"net/url"
 	"strings"
@@ -12,11 +13,7 @@ import (
 	"shelfmark/internal/store"
 )
 
-const (
-	SessionCookie = "shelfmark_session"
-	SessionTTL    = 30 * 24 * time.Hour
-	touchEvery    = time.Minute
-)
+const touchEvery = time.Minute
 
 var (
 	ErrUnauthorized = errors.New("未登录或令牌无效")
@@ -25,21 +22,17 @@ var (
 
 // Principal is an authenticated caller.
 type Principal struct {
-	User    *store.User
-	Session *store.Session
-	Token   *store.Token
+	User  *store.User
+	Token *store.Token
+
+	// method is "token", "access" or "lan".
+	method string
+	// Email is the Cloudflare Access identity, when method is "access".
+	Email string
 }
 
 // Method is the Me.authMethod value.
-func (p *Principal) Method() string {
-	if p.Token != nil {
-		return "token"
-	}
-	if p.Session != nil && p.Session.Method == "access" {
-		return "access"
-	}
-	return "session"
-}
+func (p *Principal) Method() string { return p.method }
 
 func (p *Principal) IsToken() bool { return p.Token != nil }
 
@@ -74,8 +67,8 @@ func NewAuthenticator(db *store.DB, cfg *config.Config) *Authenticator {
 	return a
 }
 
-// Request authenticates by Bearer token (scope api) or session cookie.
-// It returns (nil, nil) when no credentials are present.
+// Request resolves the caller: a Bearer token, the Cloudflare Access identity
+// when the request came through Cloudflare, or the default user otherwise.
 func (a *Authenticator) Request(r *http.Request) (*Principal, error) {
 	if h := r.Header.Get("Authorization"); h != "" {
 		scheme, tok, _ := strings.Cut(h, " ")
@@ -84,35 +77,10 @@ func (a *Authenticator) Request(r *http.Request) (*Principal, error) {
 		}
 		return a.token(r, strings.TrimSpace(tok), "api")
 	}
-	c, err := r.Cookie(SessionCookie)
-	if err != nil || c.Value == "" {
-		return nil, nil
+	if a.ViaCloudflare(r) {
+		return a.access(r)
 	}
-	ctx := r.Context()
-	s, err := store.GetSession(ctx, a.DB, HashSecret(c.Value))
-	if errors.Is(err, store.ErrNotFound) {
-		return nil, nil
-	}
-	if err != nil {
-		return nil, err
-	}
-	now := a.Now()
-	if now.After(s.ExpiresAt) {
-		store.DeleteSession(ctx, a.DB, s.ID)
-		return nil, nil
-	}
-	u, err := store.GetUser(ctx, a.DB, s.UserID)
-	if errors.Is(err, store.ErrNotFound) {
-		return nil, nil
-	}
-	if err != nil {
-		return nil, err
-	}
-	if now.Sub(s.LastSeenAt) > touchEvery {
-		s.LastSeenAt, s.ExpiresAt = now, now.Add(SessionTTL)
-		store.TouchSession(ctx, a.DB, s.ID, s.LastSeenAt, s.ExpiresAt)
-	}
-	return &Principal{User: u, Session: s}, nil
+	return a.LocalPrincipal(r.Context())
 }
 
 func (a *Authenticator) token(r *http.Request, tok, scope string) (*Principal, error) {
@@ -138,7 +106,7 @@ func (a *Authenticator) token(r *http.Request, tok, scope string) (*Principal, e
 	if t.LastUsedAt == nil || now.Sub(*t.LastUsedAt) > touchEvery {
 		store.TouchToken(ctx, a.DB, t.ID, ClientIP(r, a.Cfg.TrustedProxies), now)
 	}
-	return &Principal{User: u, Token: t}, nil
+	return &Principal{User: u, Token: t, method: "token"}, nil
 }
 
 // Basic authenticates WebDAV: username plus a token with scope dav.
@@ -160,42 +128,30 @@ func (a *Authenticator) Basic(r *http.Request) (*Principal, error) {
 	return p, nil
 }
 
-// SecureCookies reports whether cookies need the Secure flag.
-func (a *Authenticator) SecureCookies(r *http.Request) bool {
-	return strings.HasPrefix(strings.ToLower(a.Cfg.BaseURL), "https://") || IsHTTPS(r, a.Cfg.TrustedProxies)
-}
-
-// StartSession creates a session and sets the cookie. method is "session" or "access".
-func (a *Authenticator) StartSession(ctx context.Context, w http.ResponseWriter, r *http.Request, u *store.User, method string) (*store.Session, error) {
-	secret, err := NewSessionID()
+// LocalPrincipal is the identity for requests that carry no credentials and
+// did not come through Cloudflare: the default user.
+func (a *Authenticator) LocalPrincipal(ctx context.Context) (*Principal, error) {
+	u, err := a.DefaultUser(ctx)
 	if err != nil {
 		return nil, err
 	}
-	now := a.Now()
-	ua := r.UserAgent()
-	if len(ua) > 300 {
-		ua = ua[:300]
-	}
-	s := &store.Session{ID: HashSecret(secret), UserID: u.ID, CreatedAt: now, ExpiresAt: now.Add(SessionTTL), LastSeenAt: now,
-		UserAgent: ua, IP: ClientIP(r, a.Cfg.TrustedProxies), Method: method}
-	if err := store.CreateSession(ctx, a.DB, s); err != nil {
-		return nil, err
-	}
-	http.SetCookie(w, &http.Cookie{Name: SessionCookie, Value: secret, Path: "/", HttpOnly: true, SameSite: http.SameSiteLaxMode,
-		Secure: a.SecureCookies(r), MaxAge: int(SessionTTL.Seconds())})
-	return s, nil
+	return &Principal{User: u, method: "lan"}, nil
 }
 
-// EndSession deletes the current session and clears the cookie.
-func (a *Authenticator) EndSession(ctx context.Context, w http.ResponseWriter, r *http.Request, p *Principal) error {
-	if p != nil && p.Session != nil {
-		if err := store.DeleteSession(ctx, a.DB, p.Session.ID); err != nil {
-			return err
+// DefaultUser is SHELFMARK_DEFAULT_USER, or the first user created.
+func (a *Authenticator) DefaultUser(ctx context.Context) (*store.User, error) {
+	if name := a.Cfg.DefaultUser; name != "" {
+		u, err := store.GetUserByName(ctx, a.DB, name)
+		if err != nil {
+			return nil, fmt.Errorf("SHELFMARK_DEFAULT_USER=%s: %w", name, err)
 		}
+		return u, nil
 	}
-	http.SetCookie(w, &http.Cookie{Name: SessionCookie, Value: "", Path: "/", HttpOnly: true, SameSite: http.SameSiteLaxMode,
-		Secure: a.SecureCookies(r), MaxAge: -1})
-	return nil
+	u, err := store.FirstUser(ctx, a.DB)
+	if err != nil {
+		return nil, fmt.Errorf("没有可用用户: %w", err)
+	}
+	return u, nil
 }
 
 // OriginAllowed implements the CSRF Origin check (design 7 / 7.1).
@@ -229,36 +185,36 @@ func (a *Authenticator) ViaCloudflare(r *http.Request) bool {
 	return a.Access != nil && r.Header.Get("Cf-Ray") != ""
 }
 
-// CheckPasswordGate enforces 7.1: password endpoints reached through
-// Cloudflare need a valid Access JWT.
-func (a *Authenticator) CheckPasswordGate(r *http.Request) error {
-	if !a.ViaCloudflare(r) {
-		return nil
-	}
-	_, err := a.Access.Verify(r.Context(), TokenFromRequest(r))
-	return err
-}
-
-// AccessUser maps a valid Access identity to a shelfmark user (single sign-on).
-func (a *Authenticator) AccessUser(r *http.Request) (*store.User, error) {
-	if a.Access == nil {
-		return nil, ErrAccessInvalid
-	}
+// access resolves the Cloudflare Access identity carried by the request.
+func (a *Authenticator) access(r *http.Request) (*Principal, error) {
 	claims, err := a.Access.Verify(r.Context(), TokenFromRequest(r))
 	if err != nil {
 		return nil, err
 	}
-	if claims.Email == "" {
-		return nil, ErrAccessInvalid
+	u, err := a.userForEmail(r.Context(), claims.Email)
+	if err != nil {
+		return nil, err
 	}
-	for name, email := range a.Cfg.CFAccessUsers {
-		if email == claims.Email {
-			u, err := store.GetUserByName(r.Context(), a.DB, name)
-			if err != nil {
-				return nil, ErrAccessInvalid
+	return &Principal{User: u, method: "access", Email: claims.Email}, nil
+}
+
+// userForEmail maps an Access email through SHELFMARK_CF_ACCESS_USERS; without
+// a mapping (single-user instance) the default user is used.
+func (a *Authenticator) userForEmail(ctx context.Context, email string) (*store.User, error) {
+	if email != "" {
+		for name, mapped := range a.Cfg.CFAccessUsers {
+			if mapped == email {
+				u, err := store.GetUserByName(ctx, a.DB, name)
+				if err != nil {
+					return nil, ErrAccessInvalid
+				}
+				return u, nil
 			}
-			return u, nil
 		}
 	}
-	return nil, ErrAccessInvalid
+	u, err := a.DefaultUser(ctx)
+	if err != nil {
+		return nil, ErrAccessInvalid
+	}
+	return u, nil
 }

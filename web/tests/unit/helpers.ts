@@ -1,7 +1,7 @@
 // 单元测试辅助：把 API 客户端接到内存假后端（带最简 Cookie 罐）
 import { createApi, type ApiOptions } from '../../src/api/client'
 import { createMockServer } from '../../mock/server'
-import { DEMO_PASSWORD, DEMO_USER, type Scenario } from '../../mock/seed'
+import type { Scenario } from '../../mock/seed'
 
 export const ORIGIN = 'http://shelfmark.test'
 
@@ -29,9 +29,10 @@ export function setup(scenario: Scenario = 'seeded', opts: ApiOptions = {}) {
     const r = await mock.handle(new Request(ORIGIN + '/__mock/' + path, { method: 'POST', body: JSON.stringify(body) }))
     return r.kind === 'response' ? r.response : null
   }
+  // 内网请求直接是默认用户，没有登录这一步。
   const login = async () => {
-    const r = await api.client.POST('/api/v1/auth/login', { body: { username: DEMO_USER, password: DEMO_PASSWORD } })
-    if (!r.response.ok) throw new Error('login failed')
+    const r = await api.client.GET('/api/v1/auth/me')
+    if (!r.response.ok) throw new Error('me failed')
     return r.data!
   }
   return { mock, api, client: api.client, jar, calls, control, login, mockFetch }

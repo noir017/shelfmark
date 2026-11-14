@@ -56,7 +56,9 @@
       <a href="/reports/broken"><Icon name="broken" size={17} /> {t('broken.title')}</a>
       <a href="/reports/duplicates"><Icon name="duplicate" size={17} /> {t('dup.title')}</a>
       <hr />
-      <button class="logout" onclick={logout} data-testid="logout"><Icon name="logout" size={17} /> {t('settings.logout')}</button>
+      {#if app.me?.authMethod === 'access'}
+        <button class="logout" onclick={logout} data-testid="logout"><Icon name="logout" size={17} /> {t('settings.logout')}</button>
+      {/if}
     </nav>
   {/if}
   {#if current}

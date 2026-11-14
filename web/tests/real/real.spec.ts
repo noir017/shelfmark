@@ -2,20 +2,14 @@
 import { expect, test, type Page } from '@playwright/test'
 import { row, rowMenu } from '../e2e/helpers'
 
-const USER = process.env.SHELFMARK_E2E_USER!
-const PASS = process.env.SHELFMARK_E2E_PASSWORD!
-
 type Node = { id: number; type: string; title: string; url?: string | null; tags: string[]; children?: Node[] }
 
 async function login(page: Page) {
-  await page.goto('/login')
-  await page.locator('input[name=username]').fill(USER)
-  await page.locator('input[name=password]').fill(PASS)
-  await page.getByRole('button', { name: '登录' }).click()
+  await page.goto('/')
   await expect(page.getByTestId('start-search')).toBeVisible()
 }
 
-/** 用页面的会话 Cookie 调 API */
+/** 用页面的同源请求调 API */
 async function api<T>(page: Page, method: string, path: string, data?: unknown): Promise<T> {
   const r = await page.request.fetch(path, { method, data, headers: { 'X-Requested-With': 'shelfmark' } })
   expect(r.ok(), `${method} ${path}: ${r.status()} ${await r.text()}`).toBeTruthy()

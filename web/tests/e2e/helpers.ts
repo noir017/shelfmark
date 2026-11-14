@@ -1,8 +1,5 @@
 import { expect, type APIRequestContext, type Page } from '@playwright/test'
 
-export const USER = 'alice'
-export const PASS = process.env.SHELFMARK_MOCK_PASSWORD || 'demo-password'
-
 export async function reset(request: APIRequestContext, body: Record<string, unknown> = {}) {
   const r = await request.post('/__mock/reset', { data: body })
   expect(r.ok()).toBeTruthy()
@@ -13,10 +10,7 @@ export async function mock(request: APIRequestContext, path: string, data: Recor
 }
 
 export async function login(page: Page, next = '/') {
-  await page.goto('/login' + (next !== '/' ? '?next=' + encodeURIComponent(next) : ''))
-  await page.locator('input[name=username]').fill(USER)
-  await page.locator('input[name=password]').fill(PASS)
-  await page.getByRole('button', { name: '登录' }).click()
+  await page.goto(next)
   if (next === '/') await expect(page.getByTestId('start-search')).toBeVisible()
   else await expect(page).toHaveURL(new RegExp(next.replace(/[?]/g, '\\?')))
 }

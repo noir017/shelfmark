@@ -3,11 +3,11 @@ import { AccessExpiredError, ApiError, NetworkError, isGatewayResponse, unwrap }
 import { ORIGIN, setup } from './helpers'
 
 describe('API 封装', () => {
-  it('登录后用 Cookie 会话访问，写请求自动带 X-Requested-With', async () => {
+  it('直接以默认用户访问，写请求自动带 X-Requested-With', async () => {
     const t = setup()
     const me = await t.login()
     expect(me.user.username).toBe('alice')
-    expect(t.jar.has('shelfmark_session')).toBe(true)
+    expect(me.authMethod).toBe('lan')
     const libs = await unwrap(t.client.GET('/api/v1/libraries'))
     expect(libs.map((l) => l.slug)).toEqual(['bookmarks', 'work'])
     const created = await unwrap(
@@ -38,12 +38,10 @@ describe('API 封装', () => {
     await expect(p).rejects.toMatchObject({ status: 404, code: 'not_found' })
   })
 
-  it('401 触发 onUnauthorized，但登录接口自身的 401 不触发', async () => {
+  it('401 触发 onUnauthorized（没有可用用户时）', async () => {
     const onUnauthorized = vi.fn()
-    const t = setup('seeded', { onUnauthorized })
+    const t = setup('empty', { onUnauthorized })
     await t.client.GET('/api/v1/libraries')
-    expect(onUnauthorized).toHaveBeenCalledTimes(1)
-    await t.client.POST('/api/v1/auth/login', { body: { username: 'alice', password: 'wrong-password' } })
     expect(onUnauthorized).toHaveBeenCalledTimes(1)
   })
 
@@ -112,16 +110,6 @@ describe('API 封装', () => {
     expect(isGatewayResponse(new Response('<html>', { headers: { 'content-type': 'text/html' } }))).toBe(true)
     expect(isGatewayResponse(new Response('{}', { headers: { 'content-type': 'application/json' } }))).toBe(false)
     expect(isGatewayResponse(new Response(null, { status: 304 }))).toBe(false)
-  })
-
-  it('Access 单点登录：启用且有映射时直接建立会话', async () => {
-    const t = setup()
-    await t.control('config', { cfAccessSso: true, accessUser: 'alice' })
-    const info = await unwrap(t.client.GET('/api/v1/system/info'))
-    expect(info.features.cfAccessSso).toBe(true)
-    const me = await unwrap(t.client.POST('/api/v1/auth/access'))
-    expect(me.authMethod).toBe('access')
-    expect((await unwrap(t.client.GET('/api/v1/auth/me'))).user.username).toBe('alice')
   })
 
   it('树接口支持 ETag / 304', async () => {

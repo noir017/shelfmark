@@ -20,10 +20,6 @@ import (
 	"shelfmark/internal/config"
 )
 
-func init() {
-	Argon2Params.Memory = 1024
-}
-
 // fakeAccess serves a JWKS and signs tokens like Cloudflare Access.
 type fakeAccess struct {
 	srv     *httptest.Server
@@ -269,14 +265,7 @@ func TestLimiter(t *testing.T) {
 	}
 }
 
-func TestPasswordAndToken(t *testing.T) {
-	h, err := HashPassword("correct horse")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !VerifyPassword(h, "correct horse") || VerifyPassword(h, "wrong") {
-		t.Fatal("verify")
-	}
+func TestToken(t *testing.T) {
 	tok, _ := NewToken()
 	if len(tok) < 40 || tok[:4] != "smk_" || TokenPrefix(tok) != tok[:8] {
 		t.Fatalf("token %q", tok)

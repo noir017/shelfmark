@@ -29,7 +29,6 @@ export default {
 
   'field.username': '用户名',
   'field.password': '密码',
-  'field.passwordConfirm': '确认密码',
   'field.url': '网址',
   'field.title': '标题',
   'field.tags': '标签',
@@ -65,14 +64,6 @@ export default {
   'sync.counts': '{b} 个书签，{f} 个文件夹',
   'sync.pending': '{n} 个上传待确认',
 
-  'login.submit': '登录',
-  'login.sso': '正在通过 Cloudflare Access 登录…',
-  'setup.title': '首次设置',
-  'setup.intro': '创建管理员账号。之后可以在设置里添加其他用户。',
-  'setup.submit': '创建并登录',
-  'setup.badUsername': '用户名只能包含字母、数字、点、下划线和短横线',
-  'setup.shortPassword': '密码至少 8 位',
-  'setup.mismatch': '两次输入的密码不一致',
 
   'notFound.title': '页面不存在',
   'notFound.home': '回到起始页',
@@ -289,6 +280,7 @@ export default {
   'settings.logout': '退出登录',
 
   'account.prefs': '偏好',
+  'account.localNetwork': '内网直连',
   'account.signedInAs': '当前用户：{user}',
   'account.language': '语言',
   'account.auto': '跟随浏览器',
@@ -300,11 +292,6 @@ export default {
   'account.defaultSave': '默认收藏位置',
   'account.defaultSaveHint': '快速收藏（分享、插件、书签小工具）不指定位置时存到这里；不设置则存到 bookmarks 库的“收件箱”。',
   'account.useDefaultSave': '指定默认位置',
-  'account.password': '修改密码',
-  'account.currentPassword': '当前密码',
-  'account.newPassword': '新密码',
-  'account.changePassword': '修改密码',
-  'account.passwordChanged': '密码已修改，其他设备上的登录已失效',
 
   'devices.addFloccus': '添加 Floccus 设备',
   'devices.addToken': '添加插件/脚本令牌',
@@ -425,9 +412,6 @@ export default {
   'users.admin': '管理员',
   'users.you': '你',
   'users.created': '已添加',
-  'users.resetPassword': '重置密码',
-  'users.resetTitle': '重置 {name} 的密码',
-  'users.passwordReset': '密码已重置',
   'users.makeAdmin': '设为管理员',
   'users.revokeAdmin': '取消管理员',
   'users.deleteTitle': '删除用户 {name}？',

@@ -15,14 +15,14 @@ var usernameRe = regexp.MustCompile(`^[A-Za-z0-9._-]{1,64}$`)
 func ValidUsername(s string) bool { return usernameRe.MatchString(s) }
 
 // CreateUser creates a user with the default library "bookmarks".
-func (s *Service) CreateUser(ctx context.Context, username, passwordHash string, admin bool) (*store.User, error) {
+func (s *Service) CreateUser(ctx context.Context, username string, admin bool) (*store.User, error) {
 	if !ValidUsername(username) {
 		return nil, Invalid("username", "用户名只能包含字母、数字和 . _ -，最长 64 位")
 	}
 	var u *store.User
 	err := s.DB.Tx(ctx, func(tx *sql.Tx) error {
 		var err error
-		u, err = store.CreateUser(ctx, tx, username, passwordHash, admin, s.Now())
+		u, err = store.CreateUser(ctx, tx, username, admin, s.Now())
 		if err != nil {
 			return err
 		}

@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Smoke test: build, start on a random port with a temp data dir, and walk
-# through setup -> login -> bookmark -> WebDAV GET/PROPFIND -> PUT -> history -> restore.
+# through default identity -> bookmark -> WebDAV GET/PROPFIND -> PUT -> history -> restore.
 # Needs: go, curl, python3. Usage: server/scripts/smoke.sh
 # SHELFMARK_BIN=<path> tests an already built binary instead of building one.
 set -euo pipefail
@@ -39,14 +39,11 @@ body() { sed '$d' <<<"$1"; }
 [ "$(curl -fsS "$base/healthz" | cut -c1-2)" = "ok" ] || fail healthz
 step healthz
 
-r="$(api POST /api/v1/setup '{"username":"alice","password":"correct horse"}')"
-[ "$(code "$r")" = 201 ] || fail "setup: $r"
-step "首次设置"
-
-rm -f "$jar"
-r="$(api POST /api/v1/auth/login '{"username":"alice","password":"correct horse"}')"
-[ "$(code "$r")" = 200 ] || fail "login: $r"
-step "登录"
+r="$(api GET /api/v1/auth/me)"
+[ "$(code "$r")" = 200 ] || fail "me: $r"
+[ "$(body "$r" | json "['authMethod']")" = lan ] || fail "authMethod: $r"
+[ "$(body "$r" | json "['user']['username']")" = admin ] || fail "default user: $r"
+step "内网直连（默认用户 admin）"
 
 r="$(api POST /api/v1/libraries/bookmarks/items '{"type":"bookmark","title":"Example","url":"https://example.com/"}')"
 [ "$(code "$r")" = 201 ] || fail "create bookmark: $r"
@@ -55,7 +52,7 @@ step "建书签"
 r="$(api POST /api/v1/tokens '{"name":"smoke","scopes":["dav"]}')"
 [ "$(code "$r")" = 201 ] || fail "token: $r"
 tok="$(body "$r" | json "['token']")"
-dav=(-sS -u "alice:$tok")
+dav=(-sS -u "admin:$tok")
 
 get="$(curl "${dav[@]}" "$base/dav/bookmarks.xbel")"
 grep -q '<title>Example</title>' <<<"$get" || fail "dav get: $get"

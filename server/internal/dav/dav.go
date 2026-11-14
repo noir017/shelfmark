@@ -98,6 +98,14 @@ func (h *Handler) ServeHTTP(rw http.ResponseWriter, r *http.Request) {
 		return
 	}
 	p, err := h.Auth.Basic(r)
+	if errors.Is(err, auth.ErrUnauthorized) {
+		// 内网且没带凭据：直接用默认用户，Floccus 不必配令牌。
+		if _, _, ok := r.BasicAuth(); !ok && !h.Auth.ViaCloudflare(r) {
+			if local, e := h.Auth.LocalPrincipal(r.Context()); e == nil {
+				p, err = local, nil
+			}
+		}
+	}
 	if err != nil {
 		if _, _, ok := r.BasicAuth(); ok {
 			h.Auth.Limiter.Fail(ip)

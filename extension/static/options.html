@@ -31,28 +31,7 @@
         </label>
       </details>
 
-      <div class="tabs" role="tablist">
-        <button id="mode-password" type="button" role="tab" data-i18n="loginWithPassword"></button>
-        <button id="mode-token" type="button" role="tab" data-i18n="loginWithToken"></button>
-      </div>
-
-      <form id="password-form" autocomplete="on">
-        <label class="field">
-          <span data-i18n="fieldUsername"></span>
-          <input id="username" type="text" autocomplete="username" placeholder="alice">
-        </label>
-        <label class="field">
-          <span data-i18n="fieldPassword"></span>
-          <input id="password" type="password" autocomplete="current-password">
-        </label>
-        <label class="field">
-          <span data-i18n="fieldDeviceName"></span>
-          <input id="device-name" type="text" maxlength="100">
-        </label>
-        <button id="login-btn" type="submit" class="primary" data-i18n="login"></button>
-      </form>
-
-      <form id="token-form" hidden>
+      <form id="token-form">
         <label class="field">
           <span data-i18n="fieldToken"></span>
           <input id="token" type="password" autocomplete="off" spellcheck="false" placeholder="smk_…">

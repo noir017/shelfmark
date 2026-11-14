@@ -29,7 +29,7 @@ func TestRun(t *testing.T) {
 	}
 	defer db.Close()
 	now := time.Now()
-	u, _ := store.CreateUser(ctx, db, "alice", "x", true, now)
+	u, _ := store.CreateUser(ctx, db, "alice", true, now)
 	lib, _ := store.CreateLibrary(ctx, db, u.ID, "bookmarks", "bookmarks", now)
 	work, _ := store.CreateLibrary(ctx, db, u.ID, "work", "work", now)
 	t1 := tree.New()

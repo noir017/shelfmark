@@ -1,7 +1,6 @@
-import { createApi, isApiError, type ApiConfig } from '../api/client';
+import { createApi, type ApiConfig } from '../api/client';
 import { cacheSettings, readSnapshot, refreshSnapshot, type Snapshot } from '../lib/data';
-import { currentUaHints, deviceName } from '../lib/device';
-import { byId, h, show } from '../lib/dom';
+import { byId, h } from '../lib/dom';
 import { describeError } from '../lib/errors';
 import { ext } from '../lib/ext';
 import { localize, t } from '../lib/i18n';
@@ -24,13 +23,7 @@ const el = {
   accessBox: byId<HTMLDetailsElement>('access-box'),
   accessId: byId<HTMLInputElement>('access-id'),
   accessSecret: byId<HTMLInputElement>('access-secret'),
-  modePassword: byId<HTMLButtonElement>('mode-password'),
-  modeToken: byId<HTMLButtonElement>('mode-token'),
-  passwordForm: byId<HTMLFormElement>('password-form'),
   tokenForm: byId<HTMLFormElement>('token-form'),
-  username: byId<HTMLInputElement>('username'),
-  password: byId<HTMLInputElement>('password'),
-  device: byId<HTMLInputElement>('device-name'),
   token: byId<HTMLInputElement>('token'),
   conn: byId('conn-status'),
   testBtn: byId<HTMLButtonElement>('test-btn'),
@@ -87,13 +80,6 @@ async function requestPermission(serverUrl: string): Promise<boolean> {
   }
 }
 
-function setMode(mode: 'password' | 'token'): void {
-  show(el.passwordForm, mode === 'password');
-  show(el.tokenForm, mode === 'token');
-  el.modePassword.setAttribute('aria-selected', String(mode === 'password'));
-  el.modeToken.setAttribute('aria-selected', String(mode === 'token'));
-}
-
 function renderAccount(): void {
   el.logoutBtn.hidden = !isConfigured(config);
   el.defaultSave.disabled = !isConfigured(config);
@@ -114,25 +100,6 @@ async function afterLogin(previous: Config): Promise<void> {
   await loadDefaultSave();
 }
 
-async function onPasswordLogin(e: SubmitEvent): Promise<void> {
-  e.preventDefault();
-  const serverUrl = readServer();
-  if (!serverUrl || !(await requestPermission(serverUrl))) return;
-  const username = el.username.value.trim();
-  const name = el.device.value.trim() || deviceName(t('devicePrefix'), currentUaHints());
-  say(el.conn, t('connWorking'));
-  try {
-    const api = createApi({ serverUrl, ...accessFields() });
-    const tok = await api.createToken(username, el.password.value, name);
-    const previous = config;
-    config = await saveConfig(area, { serverUrl, token: tok.token, tokenId: tok.id, username, ...accessFields() });
-    el.password.value = '';
-    await afterLogin(previous);
-  } catch (err) {
-    say(el.conn, isApiError(err, 'unauthorized') ? t('errLoginFailed') : errorText(err), 'error');
-  }
-}
-
 async function onTokenSave(e: SubmitEvent): Promise<void> {
   e.preventDefault();
   const serverUrl = readServer();
@@ -145,7 +112,6 @@ async function onTokenSave(e: SubmitEvent): Promise<void> {
     const previous = config;
     config = await saveConfig(area, { serverUrl, token, tokenId: null, username: me.user.username, ...accessFields() });
     el.token.value = '';
-    el.username.value = me.user.username;
     await afterLogin(previous);
   } catch (err) {
     say(el.conn, errorText(err), 'error');
@@ -253,15 +219,9 @@ async function main(): Promise<void> {
   el.accessId.value = config.accessClientId;
   el.accessSecret.value = config.accessClientSecret;
   el.accessBox.open = hasAccessToken(config);
-  el.username.value = config.username;
-  el.device.value = deviceName(t('devicePrefix'), currentUaHints());
   el.newtab.checked = config.newTabBookmarks;
-  setMode('password');
   renderAccount();
 
-  el.modePassword.addEventListener('click', () => setMode('password'));
-  el.modeToken.addEventListener('click', () => setMode('token'));
-  el.passwordForm.addEventListener('submit', (e) => void onPasswordLogin(e));
   el.tokenForm.addEventListener('submit', (e) => void onTokenSave(e));
   el.testBtn.addEventListener('click', () => void onTest());
   el.logoutBtn.addEventListener('click', () => void onLogout());

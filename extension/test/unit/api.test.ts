@@ -33,22 +33,6 @@ async function expectApiError(p: Promise<unknown>): Promise<ApiError> {
 }
 
 describe('auth', () => {
-  it('exchanges username and password for an api token', async () => {
-    const api = createApi({ serverUrl: server.url });
-    const tok = await api.createToken(ALICE.username, ALICE.password, '插件 · Chrome · Linux');
-    expect(tok.token).toMatch(/^smk_/);
-    expect(tok.scopes).toEqual(['api']);
-    expect(tok.name).toBe('插件 · Chrome · Linux');
-    const me = await createApi({ serverUrl: server.url, token: tok.token }).me();
-    expect(me.user.username).toBe('alice');
-  });
-
-  it('maps a wrong password to unauthorized', async () => {
-    const err = await expectApiError(createApi({ serverUrl: server.url }).createToken('alice', 'nope', 'x'));
-    expect(err.status).toBe(401);
-    expect(err.code).toBe('unauthorized');
-  });
-
   it('sends the bearer token and no cookies', async () => {
     await createApi({ serverUrl: server.url, token }).libraries();
     expect(lastRequest().headers.authorization).toBe(`Bearer ${token}`);

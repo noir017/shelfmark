@@ -7,15 +7,11 @@ export interface RouteDef {
   name: string
   pattern: string
   load: Loader
-  /** 不需要登录 */
-  public?: boolean
   /** 不显示顶栏和底部导航 */
   bare?: boolean
 }
 
 export const routes: RouteDef[] = [
-  { name: 'setup', pattern: '/setup', load: () => import('../pages/Setup.svelte'), public: true, bare: true },
-  { name: 'login', pattern: '/login', load: () => import('../pages/Login.svelte'), public: true, bare: true },
   { name: 'start', pattern: '/', load: () => import('../pages/StartPage.svelte') },
   { name: 'manager', pattern: '/lib', load: () => import('../pages/Manager.svelte') },
   { name: 'manager', pattern: '/lib/:slug', load: () => import('../pages/Manager.svelte') },
@@ -91,9 +87,4 @@ export function installRouter() {
     e.preventDefault()
     navigate(url.pathname + url.search + url.hash)
   })
-}
-
-export function loginRedirect() {
-  const next = location.pathname + location.search
-  navigate('/login' + (next && next !== '/' && !next.startsWith('/login') ? '?next=' + encodeURIComponent(next) : ''), { replace: true })
 }

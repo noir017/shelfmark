@@ -28,7 +28,7 @@ func TestLoadFileAndEnv(t *testing.T) {
 	if c.AllowedOrigins[0] != "https://bm.example.com" || len(c.AllowedOrigins) != 2 {
 		t.Fatalf("origins %v", c.AllowedOrigins)
 	}
-	if c.CFAccessUsers["alice"] != "alice@example.com" || c.CFAccessTeamDomain != "team.example.com" || !c.AccessSSO() {
+	if c.CFAccessUsers["alice"] != "alice@example.com" || c.CFAccessTeamDomain != "team.example.com" {
 		t.Fatalf("access %+v", c)
 	}
 	d, _ := Load("", func(string) string { return "" })

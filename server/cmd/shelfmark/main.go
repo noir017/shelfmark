@@ -2,7 +2,6 @@
 package main
 
 import (
-	"bufio"
 	"context"
 	"errors"
 	"flag"
@@ -16,7 +15,6 @@ import (
 	"syscall"
 	"time"
 
-	"golang.org/x/term"
 
 	"shelfmark/internal/auth"
 	"shelfmark/internal/config"
@@ -29,8 +27,7 @@ import (
 
 const usage = `用法:
   shelfmark [--config file] serve
-  shelfmark user add <name> [--admin] [--password-stdin]
-  shelfmark user passwd <name> [--password-stdin]
+  shelfmark user add <name> [--admin]
   shelfmark user list | delete <name>
   shelfmark token create <user> --name <n> --scopes api,dav
   shelfmark library list <user>
@@ -170,23 +167,6 @@ func parseFlags(fs *flag.FlagSet, args []string) ([]string, error) {
 	return pos, nil
 }
 
-func readPassword(stdin io.Reader, stdout io.Writer, fromStdin bool) (string, error) {
-	if fromStdin {
-		line, err := bufio.NewReader(stdin).ReadString('\n')
-		if err != nil && !errors.Is(err, io.EOF) {
-			return "", err
-		}
-		return strings.TrimRight(line, "\r\n"), nil
-	}
-	if f, ok := stdin.(*os.File); ok && term.IsTerminal(int(f.Fd())) {
-		fmt.Fprint(stdout, "密码: ")
-		b, err := term.ReadPassword(int(f.Fd()))
-		fmt.Fprintln(stdout)
-		return string(b), err
-	}
-	return "", errors.New("请用 --password-stdin 从标准输入提供密码")
-}
-
 func userCmd(ctx context.Context, svc *core.Service, args []string, stdin io.Reader, stdout io.Writer) error {
 	if len(args) == 0 {
 		return errors.New(usage)
@@ -194,7 +174,6 @@ func userCmd(ctx context.Context, svc *core.Service, args []string, stdin io.Rea
 	sub, args := args[0], args[1:]
 	fs := flag.NewFlagSet("user", flag.ContinueOnError)
 	admin := fs.Bool("admin", false, "管理员")
-	pwStdin := fs.Bool("password-stdin", false, "从标准输入读密码")
 	pos, err := parseFlags(fs, args)
 	if err != nil {
 		return err
@@ -213,40 +192,15 @@ func userCmd(ctx context.Context, svc *core.Service, args []string, stdin io.Rea
 			fmt.Fprintf(stdout, "%d\t%s\t%s\n", u.ID, u.Username, role)
 		}
 		return nil
-	case "add", "passwd":
+	case "add":
 		if len(pos) != 1 {
 			return errors.New(usage)
 		}
-		pw, err := readPassword(stdin, stdout, *pwStdin)
+		u, err := svc.CreateUser(ctx, pos[0], *admin)
 		if err != nil {
 			return err
 		}
-		if err := auth.CheckPassword(pw); err != nil {
-			return err
-		}
-		hash, err := auth.HashPassword(pw)
-		if err != nil {
-			return err
-		}
-		if sub == "add" {
-			u, err := svc.CreateUser(ctx, pos[0], hash, *admin)
-			if err != nil {
-				return err
-			}
-			fmt.Fprintf(stdout, "已创建用户 %s\n", u.Username)
-			return nil
-		}
-		u, err := store.GetUserByName(ctx, svc.DB, pos[0])
-		if err != nil {
-			return fmt.Errorf("用户 %s 不存在", pos[0])
-		}
-		if err := store.SetUserPassword(ctx, svc.DB, u.ID, hash, time.Now()); err != nil {
-			return err
-		}
-		if err := store.DeleteUserSessions(ctx, svc.DB, u.ID, ""); err != nil {
-			return err
-		}
-		fmt.Fprintln(stdout, "密码已修改")
+		fmt.Fprintf(stdout, "已创建用户 %s\n", u.Username)
 		return nil
 	case "delete":
 		if len(pos) != 1 {

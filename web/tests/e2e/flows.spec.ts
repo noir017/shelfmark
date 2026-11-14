@@ -1,29 +1,14 @@
 import { expect, test } from '@playwright/test'
-import { login, mock, PASS, reset, USER } from './helpers'
+import { login, mock, reset } from './helpers'
 
 test.beforeEach(async ({ request }) => reset(request))
 
-test('首次设置管理员后直接进入', async ({ page, request }) => {
-  await reset(request, { scenario: 'empty' })
-  await page.goto('/')
-  await expect(page).toHaveURL(/\/setup$/)
-  await page.locator('input[name=username]').fill('alice')
-  await page.locator('input[name=password]').fill('a-long-password')
-  await page.locator('input[name=confirm]').fill('a-long-password')
-  await page.getByRole('button', { name: '创建并登录' }).click()
-  await expect(page.getByTestId('start-search')).toBeVisible()
-})
-
-test('登录：错误密码提示，正确后回到原页面', async ({ page }) => {
+test('内网直接进入，没有登录页', async ({ page }) => {
   await page.goto('/lib/bookmarks')
-  await expect(page).toHaveURL(/\/login\?next=/)
-  await page.locator('input[name=username]').fill(USER)
-  await page.locator('input[name=password]').fill('wrong-password')
-  await page.getByRole('button', { name: '登录' }).click()
-  await expect(page.getByRole('alert')).toContainText('用户名或密码错误')
-  await page.locator('input[name=password]').fill(PASS)
-  await page.getByRole('button', { name: '登录' }).click()
   await expect(page).toHaveURL(/\/lib\/bookmarks$/)
+  await expect(page.getByTestId('start-search')).toHaveCount(0)
+  await page.goto('/')
+  await expect(page.getByTestId('start-search')).toBeVisible()
 })
 
 test('搜索语法', async ({ page }) => {

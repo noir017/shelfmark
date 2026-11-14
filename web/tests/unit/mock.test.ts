@@ -6,14 +6,11 @@ import { setup } from './helpers'
 const slug = { params: { path: { slug: 'bookmarks' } } }
 
 describe('假后端', () => {
-  it('首次设置：无用户时 needsSetup，设置后直接登录', async () => {
-    const t = setup('empty')
-    expect((await unwrap(t.client.GET('/api/v1/system/info'))).needsSetup).toBe(true)
-    const me = await unwrap(t.client.POST('/api/v1/setup', { body: { username: 'alice', password: 'longenough' } }))
-    expect(me.user.isAdmin).toBe(true)
-    expect((await unwrap(t.client.GET('/api/v1/libraries')))[0].slug).toBe('bookmarks')
-    const again = await t.client.POST('/api/v1/setup', { body: { username: 'bob', password: 'longenough' } })
-    expect(again.response.status).toBe(409)
+  it('没有登录步骤：请求直接以默认用户身份处理', async () => {
+    const t = setup()
+    const me = await unwrap(t.client.GET('/api/v1/auth/me'))
+    expect(me.user.username).toBe('alice')
+    expect(me.authMethod).toBe('lan')
   })
 
   it('大批量删除的上传被拦截（412），确认后应用并生成 webdav 修订', async () => {

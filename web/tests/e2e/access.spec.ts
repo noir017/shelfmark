@@ -27,16 +27,3 @@ test('Access 会话过期：提示整页刷新，SW 不缓存 Access 登录页',
   expect(shell).toContain('shelfmark')
   expect(shell).not.toContain('Cloudflare Access login')
 })
-
-test('Access 单点登录：登录页先调 /auth/access，成功直接进入', async ({ page, request }) => {
-  await mock(request, 'config', { cfAccessSso: true, accessUser: 'alice' })
-  await page.goto('/lib/work')
-  await expect(page).toHaveURL(/\/lib\/work$/)
-  await expect(page.locator('[data-testid=item-row][data-title="项目"]')).toBeVisible()
-})
-
-test('Access 单点登录没有映射时退回密码登录', async ({ page, request }) => {
-  await mock(request, 'config', { cfAccessSso: true, accessUser: null })
-  await page.goto('/login')
-  await expect(page.locator('input[name=password]')).toBeVisible()
-})

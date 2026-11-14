@@ -4,13 +4,13 @@
   import Dialog from '../../components/Dialog.svelte'
   import Icon from '../../components/Icon.svelte'
   import { fmtDateTime, t } from '../../lib/i18n/index.svelte'
-  import { confirmDialog, promptDialog } from '../../lib/overlay.svelte'
+  import { confirmDialog } from '../../lib/overlay.svelte'
   import { app, errorText } from '../../lib/stores/app.svelte'
   import { toast } from '../../lib/toast.svelte'
 
   let users = $state<User[]>([])
   let error = $state('')
-  let creating = $state<null | { username: string; password: string; isAdmin: boolean; error: string }>(null)
+  let creating = $state<null | { username: string; isAdmin: boolean; error: string }>(null)
 
   async function load() {
     try {
@@ -27,26 +27,13 @@
     e.preventDefault()
     const cur = creating
     if (!cur) return
-    if (cur.password.length < 8) return (cur.error = t('setup.shortPassword'))
     try {
-      await unwrap(client.POST('/api/v1/users', { body: { username: cur.username.trim(), password: cur.password, isAdmin: cur.isAdmin } }))
+      await unwrap(client.POST('/api/v1/users', { body: { username: cur.username.trim(), isAdmin: cur.isAdmin } }))
       toast(t('users.created'), { kind: 'success' })
       creating = null
       await load()
     } catch (err) {
       cur.error = errorText(err)
-    }
-  }
-
-  async function resetPassword(u: User) {
-    const pw = await promptDialog({ title: t('users.resetTitle', { name: u.username }), input: { label: t('account.newPassword') }, confirmLabel: t('common.save') })
-    if (!pw) return
-    if (pw.length < 8) return toast(t('setup.shortPassword'), { kind: 'error' })
-    try {
-      await unwrap(client.PATCH('/api/v1/users/{userId}', { params: { path: { userId: u.id } }, body: { password: pw } }))
-      toast(t('users.passwordReset'), { kind: 'success' })
-    } catch (e) {
-      toast(errorText(e), { kind: 'error' })
     }
   }
 
@@ -74,7 +61,7 @@
 <div class="card">
   <div class="row">
     <p class="hint spacer">{t('users.intro')}</p>
-    <button class="btn primary" onclick={() => (creating = { username: '', password: '', isAdmin: false, error: '' })} data-testid="new-user"><Icon name="plus" size={16} />{t('users.new')}</button>
+    <button class="btn primary" onclick={() => (creating = { username: '', isAdmin: false, error: '' })} data-testid="new-user"><Icon name="plus" size={16} />{t('users.new')}</button>
   </div>
   {#if error}<p class="error-text">{error}</p>{/if}
   <table class="list" data-testid="user-list">
@@ -84,7 +71,6 @@
           <td><b>{u.username}</b> {#if u.isAdmin}<span class="badge">{t('users.admin')}</span>{/if}{#if u.id === app.me?.user.id}<span class="badge">{t('users.you')}</span>{/if}</td>
           <td class="hint wide-only">{fmtDateTime(u.createdAt)}</td>
           <td class="actions">
-            <button class="btn small" onclick={() => resetPassword(u)}>{t('users.resetPassword')}</button>
             <button class="btn small" onclick={() => toggleAdmin(u)} disabled={u.id === app.me?.user.id}>{u.isAdmin ? t('users.revokeAdmin') : t('users.makeAdmin')}</button>
             <button class="btn small" onclick={() => remove(u)} disabled={u.id === app.me?.user.id}>{t('menu.delete')}</button>
           </td>
@@ -98,7 +84,6 @@
   <Dialog title={t('users.new')} onclose={() => (creating = null)} testid="user-dialog">
     <form id="user-form" onsubmit={create}>
       <label class="field"><span>{t('field.username')}</span><input name="username" bind:value={creating.username} required autocomplete="off" /></label>
-      <label class="field"><span>{t('field.password')}</span><input name="password" type="password" bind:value={creating.password} required autocomplete="new-password" /></label>
       <label class="field inline"><input type="checkbox" bind:checked={creating.isAdmin} /><span>{t('users.admin')}</span></label>
       {#if creating.error}<p class="error-text">{creating.error}</p>{/if}
     </form>

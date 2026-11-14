@@ -3,9 +3,8 @@ import { api, client, unwrap } from '../../api'
 import { AccessExpiredError, ApiError, NetworkError } from '../../api/client'
 import type { Library, Me, PendingUpload, QuickSaveRequest, Settings, SettingsPatch, SystemInfo } from '../../api/types'
 import { setLang, t } from '../i18n/index.svelte'
-import { kvClear, kvGet, kvSet } from '../offline/idb'
+import { kvGet, kvSet } from '../offline/idb'
 import { flushQueue, listQueued } from '../offline/queue'
-import { loginRedirect, navigate } from '../router.svelte'
 import { setTheme } from '../theme'
 import { dismissKey, toast } from '../toast.svelte'
 
@@ -57,10 +56,8 @@ function installHooks() {
     app.accessExpired = true
   }
   api.hooks.onUnauthorized = () => {
-    if (app.me) {
-      app.me = null
-      loginRedirect()
-    }
+    // 身份没了（Access 会话过期或服务端拒绝）：让用户点一下刷新，重新走 Access 登录
+    app.accessExpired = true
   }
   api.hooks.onLocked = (n) => {
     toast(t('lock.retrying', { actor: n.actor ?? '?', attempt: n.attempt, max: n.maxAttempts }), { kind: 'warn', key: 'lock', timeout: n.retryAfterMs + 1500 })
@@ -78,12 +75,6 @@ export async function boot() {
   window.addEventListener('online', () => void onBackOnline())
   try {
     app.info = await unwrap(client.GET('/api/v1/system/info'))
-    if (app.info.needsSetup) {
-      app.booted = true
-      await setLang(localStorage.getItem('shelfmark.lang') as 'zh-CN' | 'en' | null)
-      if (location.pathname !== '/setup') navigate('/setup', { replace: true })
-      return
-    }
     const r = await client.GET('/api/v1/auth/me')
     app.me = r.response.ok ? r.data! : null
     if (app.me) await loadUserData()
@@ -120,13 +111,6 @@ export async function loadUserData() {
   void refreshPending()
 }
 
-export async function afterLogin(me: Me) {
-  app.me = me
-  await loadUserData()
-  applyPrefs()
-  void flushOffline()
-}
-
 export async function refreshLibraries() {
   try {
     app.libraries = await unwrap(client.GET('/api/v1/libraries'))
@@ -152,17 +136,9 @@ export async function saveSettings(patch: SettingsPatch): Promise<Settings> {
   return s
 }
 
-export async function logout() {
-  try {
-    await client.POST('/api/v1/auth/logout')
-  } catch {
-    /* ignore */
-  }
-  app.me = null
-  app.settings = null
-  app.libraries = []
-  await kvClear()
-  navigate('/login', { replace: true })
+// 只有经 Cloudflare Access 访问时才有"退出"可做；内网没有会话可退。
+export function logout() {
+  location.href = '/cdn-cgi/access/logout'
 }
 
 export function defaultLibrary(): string | null {

@@ -30,7 +30,6 @@ const en: Record<keyof typeof zh, string> = {
 
   'field.username': 'Username',
   'field.password': 'Password',
-  'field.passwordConfirm': 'Confirm password',
   'field.url': 'URL',
   'field.title': 'Title',
   'field.tags': 'Tags',
@@ -66,14 +65,6 @@ const en: Record<keyof typeof zh, string> = {
   'sync.counts': '{b} bookmarks, {f} folders',
   'sync.pending': '{n} upload(s) pending',
 
-  'login.submit': 'Sign in',
-  'login.sso': 'Signing in via Cloudflare Access…',
-  'setup.title': 'First-time setup',
-  'setup.intro': 'Create the admin account. You can add more users in settings later.',
-  'setup.submit': 'Create and sign in',
-  'setup.badUsername': 'Username may only contain letters, digits, dots, underscores and hyphens',
-  'setup.shortPassword': 'Password must be at least 8 characters',
-  'setup.mismatch': 'Passwords do not match',
 
   'notFound.title': 'Page not found',
   'notFound.home': 'Back to start page',
@@ -290,6 +281,7 @@ const en: Record<keyof typeof zh, string> = {
   'settings.logout': 'Sign out',
 
   'account.prefs': 'Preferences',
+  'account.localNetwork': 'local network',
   'account.signedInAs': 'Signed in as {user}',
   'account.language': 'Language',
   'account.auto': 'Follow browser',
@@ -301,11 +293,6 @@ const en: Record<keyof typeof zh, string> = {
   'account.defaultSave': 'Default save location',
   'account.defaultSaveHint': 'Quick saves (share, extension, bookmarklet) without a location go here; if unset they go to “Inbox” in the bookmarks library.',
   'account.useDefaultSave': 'Use a default location',
-  'account.password': 'Change password',
-  'account.currentPassword': 'Current password',
-  'account.newPassword': 'New password',
-  'account.changePassword': 'Change password',
-  'account.passwordChanged': 'Password changed; other sessions were signed out',
 
   'devices.addFloccus': 'Add Floccus device',
   'devices.addToken': 'Add extension/script token',
@@ -426,9 +413,6 @@ const en: Record<keyof typeof zh, string> = {
   'users.admin': 'Admin',
   'users.you': 'you',
   'users.created': 'User added',
-  'users.resetPassword': 'Reset password',
-  'users.resetTitle': 'Reset password for {name}',
-  'users.passwordReset': 'Password reset',
   'users.makeAdmin': 'Make admin',
   'users.revokeAdmin': 'Remove admin',
   'users.deleteTitle': 'Delete user {name}?',

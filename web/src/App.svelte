@@ -3,7 +3,7 @@
   import Icon from './components/Icon.svelte'
   import Overlays from './components/Overlays.svelte'
   import { t } from './lib/i18n/index.svelte'
-  import { loginRedirect, navigate, router } from './lib/router.svelte'
+  import { navigate, router } from './lib/router.svelte'
   import { focusSearch, installShortcuts } from './lib/shortcuts'
   import { app, refreshLibraries, refreshPending } from './lib/stores/app.svelte'
   import { prefetchAllTrees } from './lib/stores/trees.svelte'
@@ -14,23 +14,7 @@
   let q = $state('')
 
   const def = $derived(router.current.def)
-  const bare = $derived(!!def.bare || !app.me)
-
-  // 访问控制
-  $effect(() => {
-    if (!app.booted || app.accessExpired) return
-    const name = def.name
-    if (app.info?.needsSetup) {
-      if (name !== 'setup') navigate('/setup', { replace: true })
-    } else if (name === 'setup') {
-      navigate(app.me ? '/' : '/login', { replace: true })
-    } else if (!app.me && !def.public) {
-      loginRedirect()
-    } else if (app.me && name === 'login') {
-      const next = router.current.query.get('next')
-      navigate(next && next.startsWith('/') && !next.startsWith('//') ? next : '/', { replace: true })
-    }
-  })
+  const bare = $derived(!!def.bare)
 
   // 懒加载页面
   $effect(() => {

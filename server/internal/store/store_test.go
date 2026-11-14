@@ -24,11 +24,11 @@ func TestMigrateAndPersist(t *testing.T) {
 	ctx := context.Background()
 	db := openTest(t)
 	now := time.Date(2026, 1, 2, 3, 4, 5, 0, time.UTC)
-	u, err := CreateUser(ctx, db, "alice", "h", true, now)
+	u, err := CreateUser(ctx, db, "alice", true, now)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := CreateUser(ctx, db, "Alice", "h", false, now); err != ErrConflict {
+	if _, err := CreateUser(ctx, db, "Alice", false, now); err != ErrConflict {
 		t.Fatalf("case-insensitive unique: %v", err)
 	}
 	lib, err := CreateLibrary(ctx, db, u.ID, "bookmarks", "bookmarks", now)

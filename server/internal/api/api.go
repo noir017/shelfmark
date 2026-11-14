@@ -165,15 +165,9 @@ func (a *API) authed(fn authedFunc) http.HandlerFunc {
 	}
 }
 
-// public is for endpoints without authentication. Endpoints that start a
-// cookie session (checkOrigin) still need an allowed Origin; others, like
-// token issuance for the extension, must accept chrome-extension:// origins.
-func (a *API) public(checkOrigin bool, fn func(w http.ResponseWriter, r *http.Request) error) http.HandlerFunc {
+// public is for endpoints that need no identity (system info, favicons).
+func (a *API) public(fn func(w http.ResponseWriter, r *http.Request) error) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		if checkOrigin && unsafeMethod(r.Method) && !a.Auth.OriginAllowed(r) {
-			a.writeError(w, r, errf(403, "forbidden", "来源不被允许（Origin 校验失败）"))
-			return
-		}
 		if err := fn(w, r); err != nil {
 			a.writeError(w, r, err)
 		}

@@ -126,7 +126,6 @@ export function createApi(opts: ApiOptions = {}): Api {
   async function smFetch(input: Request): Promise<Response> {
     const req = new Request(input, { redirect: 'manual' })
     if (isWrite(req.method) && !req.headers.has('X-Requested-With')) req.headers.set('X-Requested-With', 'shelfmark')
-    const path = new URL(req.url).pathname
     for (let attempt = 0; ; attempt++) {
       let res: Response
       try {
@@ -158,7 +157,7 @@ export function createApi(opts: ApiOptions = {}): Api {
         await new Promise((r) => setTimeout(r, delay))
         continue
       }
-      if (res.status === 401 && !path.startsWith('/api/v1/auth/') && path !== '/api/v1/setup') hooks.onUnauthorized?.()
+      if (res.status === 401) hooks.onUnauthorized?.()
       return res
     }
   }

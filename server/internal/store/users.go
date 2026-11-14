@@ -51,9 +51,9 @@ func isUnique(err error) bool {
 	return err != nil && strings.Contains(err.Error(), "UNIQUE constraint failed")
 }
 
-func CreateUser(ctx context.Context, q Q, username, hash string, admin bool, now time.Time) (*User, error) {
-	res, err := q.ExecContext(ctx, `INSERT INTO users(username, password_hash, is_admin, created_at, updated_at) VALUES (?, ?, ?, ?, ?)`,
-		username, hash, admin, TS(now), TS(now))
+func CreateUser(ctx context.Context, q Q, username string, admin bool, now time.Time) (*User, error) {
+	res, err := q.ExecContext(ctx, `INSERT INTO users(username, password_hash, is_admin, created_at, updated_at) VALUES (?, '', ?, ?, ?)`,
+		username, admin, TS(now), TS(now))
 	if isUnique(err) {
 		return nil, ErrConflict
 	}
@@ -70,6 +70,11 @@ func GetUser(ctx context.Context, q Q, id int64) (*User, error) {
 
 func GetUserByName(ctx context.Context, q Q, name string) (*User, error) {
 	return scanUser(q.QueryRowContext(ctx, `SELECT `+userCols+` FROM users WHERE username = ?`, name))
+}
+
+// FirstUser is the oldest user, used as the default identity.
+func FirstUser(ctx context.Context, q Q) (*User, error) {
+	return scanUser(q.QueryRowContext(ctx, `SELECT `+userCols+` FROM users ORDER BY id LIMIT 1`))
 }
 
 func ListUsers(ctx context.Context, q Q) ([]*User, error) {
@@ -89,11 +94,6 @@ func ListUsers(ctx context.Context, q Q) ([]*User, error) {
 	return out, rows.Err()
 }
 
-func SetUserPassword(ctx context.Context, q Q, id int64, hash string, now time.Time) error {
-	_, err := q.ExecContext(ctx, `UPDATE users SET password_hash = ?, updated_at = ? WHERE id = ?`, hash, TS(now), id)
-	return err
-}
-
 func SetUserAdmin(ctx context.Context, q Q, id int64, admin bool, now time.Time) error {
 	_, err := q.ExecContext(ctx, `UPDATE users SET is_admin = ?, updated_at = ? WHERE id = ?`, admin, TS(now), id)
 	return err
@@ -104,56 +104,7 @@ func DeleteUser(ctx context.Context, q Q, id int64) error {
 	return err
 }
 
-// ---- sessions ----
-
-type Session struct {
-	ID         string
-	UserID     int64
-	CreatedAt  time.Time
-	ExpiresAt  time.Time
-	LastSeenAt time.Time
-	UserAgent  string
-	IP         string
-	Method     string
-}
-
-func CreateSession(ctx context.Context, q Q, s *Session) error {
-	_, err := q.ExecContext(ctx, `INSERT INTO sessions(id, user_id, created_at, expires_at, last_seen_at, user_agent, ip, method) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-		s.ID, s.UserID, TS(s.CreatedAt), TS(s.ExpiresAt), TS(s.LastSeenAt), s.UserAgent, s.IP, s.Method)
-	return err
-}
-
-func GetSession(ctx context.Context, q Q, id string) (*Session, error) {
-	var s Session
-	var created, expires, seen string
-	err := q.QueryRowContext(ctx, `SELECT id, user_id, created_at, expires_at, last_seen_at, user_agent, ip, method FROM sessions WHERE id = ?`, id).
-		Scan(&s.ID, &s.UserID, &created, &expires, &seen, &s.UserAgent, &s.IP, &s.Method)
-	if errors.Is(err, sql.ErrNoRows) {
-		return nil, ErrNotFound
-	}
-	if err != nil {
-		return nil, err
-	}
-	s.CreatedAt, s.ExpiresAt, s.LastSeenAt = ParseTS(created), ParseTS(expires), ParseTS(seen)
-	return &s, nil
-}
-
-func TouchSession(ctx context.Context, q Q, id string, seen, expires time.Time) error {
-	_, err := q.ExecContext(ctx, `UPDATE sessions SET last_seen_at = ?, expires_at = ? WHERE id = ?`, TS(seen), TS(expires), id)
-	return err
-}
-
-func DeleteSession(ctx context.Context, q Q, id string) error {
-	_, err := q.ExecContext(ctx, `DELETE FROM sessions WHERE id = ?`, id)
-	return err
-}
-
-// DeleteUserSessions removes all sessions of a user except keep.
-func DeleteUserSessions(ctx context.Context, q Q, userID int64, keep string) error {
-	_, err := q.ExecContext(ctx, `DELETE FROM sessions WHERE user_id = ? AND id != ?`, userID, keep)
-	return err
-}
-
+// DeleteExpiredSessions clears the legacy sessions table (no longer written).
 func DeleteExpiredSessions(ctx context.Context, q Q, now time.Time) (int64, error) {
 	res, err := q.ExecContext(ctx, `DELETE FROM sessions WHERE expires_at < ?`, TS(now))
 	if err != nil {

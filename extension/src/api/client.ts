@@ -16,7 +16,6 @@ import type {
   Settings,
   SettingsPatch,
   SystemInfo,
-  TokenCreated,
   TransferItemRequest,
   TransferItemResult,
   Tree,
@@ -192,11 +191,6 @@ export function createApi(cfg: ApiConfig, opts: ApiOptions = {}) {
     systemInfo: (): Promise<SystemInfo> => data(() => client.GET('/api/v1/system/info')),
 
     me: (): Promise<Me> => data(() => client.GET('/api/v1/auth/me')),
-
-    createToken: (username: string, password: string, name: string): Promise<TokenCreated> =>
-      data(() =>
-        client.POST('/api/v1/auth/token', { body: { username, password, name, scopes: ['api'] } }),
-      ),
 
     revokeToken: async (tokenId: number): Promise<void> => {
       await run(() => client.DELETE('/api/v1/tokens/{tokenId}', { params: { path: { tokenId } } }));

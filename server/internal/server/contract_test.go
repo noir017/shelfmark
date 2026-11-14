@@ -86,11 +86,11 @@ func (c *contract) check(t *testing.T, req *http.Request, r resp) {
 // TestContractCoverage makes sure the main endpoints were validated by the other tests.
 func TestContractCoverage(t *testing.T) {
 	// run the flows (they record what they validated)
-	for _, f := range []func(*testing.T){TestFloccusBrowserSync, TestWebFlowRevisionsAndRestore, TestGuardAndApprove, TestTransfer, TestLoginRateLimitAndTokens} {
+	for _, f := range []func(*testing.T){TestFloccusBrowserSync, TestWebFlowRevisionsAndRestore, TestGuardAndApprove, TestTransfer, TestTokensAndFloccus} {
 		f(t)
 	}
 	main := []string{
-		"POST /api/v1/setup", "POST /api/v1/auth/login", "GET /api/v1/auth/me", "POST /api/v1/tokens", "GET /api/v1/tokens",
+		"GET /api/v1/auth/me", "POST /api/v1/tokens", "GET /api/v1/tokens",
 		"POST /api/v1/floccus/setup", "GET /api/v1/libraries", "GET /api/v1/libraries/{slug}", "POST /api/v1/libraries",
 		"GET /api/v1/libraries/{slug}/tree", "POST /api/v1/libraries/{slug}/items", "PATCH /api/v1/libraries/{slug}/items/{itemId}",
 		"GET /api/v1/libraries/{slug}/items/{itemId}", "DELETE /api/v1/libraries/{slug}/items/{itemId}",
@@ -100,7 +100,6 @@ func TestContractCoverage(t *testing.T) {
 		"GET /api/v1/libraries/{slug}/pending/{pendingId}", "POST /api/v1/libraries/{slug}/pending/{pendingId}/approve",
 		"GET /api/v1/settings", "PATCH /api/v1/settings", "GET /api/v1/jobs", "GET /api/v1/reports/duplicates", "GET /api/v1/reports/broken",
 		"GET /api/v1/recent", "GET /api/v1/system/info", "GET /api/v1/users", "GET /api/v1/tags", "GET /api/v1/ai/status",
-		"POST /api/v1/auth/token",
 	}
 	for _, m := range main {
 		if _, ok := covered.Load(m); !ok {

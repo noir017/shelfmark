@@ -1,5 +1,4 @@
 <script lang="ts">
-  import { client, unwrap } from '../../api'
   import type { Settings } from '../../api/types'
   import FolderPicker from '../../components/FolderPicker.svelte'
   import { t } from '../../lib/i18n/index.svelte'
@@ -7,10 +6,6 @@
   import { toast } from '../../lib/toast.svelte'
 
   const s = $derived(app.settings)
-  let cur = $state('')
-  let next = $state('')
-  let next2 = $state('')
-  let pwError = $state('')
 
   let useDefault = $state(!!app.settings?.defaultSave)
   let defLib = $state(app.settings?.defaultSave?.library ?? defaultLibrary() ?? 'bookmarks')
@@ -25,25 +20,12 @@
     }
   }
 
-  async function changePassword(e: Event) {
-    e.preventDefault()
-    pwError = ''
-    if (next.length < 8) return (pwError = t('setup.shortPassword'))
-    if (next !== next2) return (pwError = t('setup.mismatch'))
-    try {
-      await unwrap(client.POST('/api/v1/auth/password', { body: { currentPassword: cur, newPassword: next } }))
-      cur = next = next2 = ''
-      toast(t('account.passwordChanged'), { kind: 'success' })
-    } catch (err) {
-      pwError = errorText(err)
-    }
-  }
 </script>
 
 {#if s}
   <div class="card">
     <h2>{t('account.prefs')}</h2>
-    <p class="hint">{t('account.signedInAs', { user: app.me?.user.username ?? '' })}{app.me?.authMethod === 'access' ? ' · Cloudflare Access' : ''}</p>
+    <p class="hint">{t('account.signedInAs', { user: app.me?.user.username ?? '' })}{#if app.me?.authMethod === 'access'} · Cloudflare Access{#if app.me.email} · {app.me.email}{/if}{:else} · {t('account.localNetwork')}{/if}</p>
     <label class="field">
       <span>{t('account.language')}</span>
       <select value={s.language} onchange={(e) => patch({ language: (e.currentTarget as HTMLSelectElement).value as Settings['language'] })} data-testid="language">
@@ -81,16 +63,6 @@
     </div>
   </div>
 
-  {#if app.me?.authMethod !== 'token'}
-    <form class="card" onsubmit={changePassword}>
-      <h2>{t('account.password')}</h2>
-      <label class="field"><span>{t('account.currentPassword')}</span><input type="password" autocomplete="current-password" bind:value={cur} required /></label>
-      <label class="field"><span>{t('account.newPassword')}</span><input type="password" autocomplete="new-password" bind:value={next} required /></label>
-      <label class="field"><span>{t('field.passwordConfirm')}</span><input type="password" autocomplete="new-password" bind:value={next2} required /></label>
-      {#if pwError}<p class="error-text">{pwError}</p>{/if}
-      <button class="btn" type="submit">{t('account.changePassword')}</button>
-    </form>
-  {/if}
 {/if}
 
 <style>

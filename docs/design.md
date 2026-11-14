@@ -217,32 +217,34 @@ items_fts(title, url, notes, tags, path)   -- rowid 映射到 (library_id, item_
 
 ## 7. 认证与安全
 
-- 密码：argon2id（`golang.org/x/crypto/argon2`，m=64MiB, t=1, p=2，参数编码进哈希串）。最短 8 位。
-- 首个用户：环境变量 `SHELFMARK_ADMIN_USER` + `SHELFMARK_ADMIN_PASSWORD` 在数据库没有用户时创建；或命令行 `shelfmark user add --admin`。都没有时网页显示“首次设置”页面，只允许在没有任何用户时访问。
-- 网页会话：Cookie `shelfmark_session`，HttpOnly、SameSite=Lax、`Secure`（`SHELFMARK_BASE_URL` 是 https 或请求经可信代理标记为 https 时），有效期 30 天、滑动续期。数据库只存会话 ID 的哈希。
-- CSRF：Cookie 认证的写请求必须带请求头 `X-Requested-With: shelfmark`，且 `Origin`（有则）必须与 `SHELFMARK_BASE_URL` 或请求 Host 同源。服务端不开 CORS。
+没有密码，也没有登录页：身份由请求来源决定。
+
+- 解析顺序：`Authorization: Bearer <token>` → 带 `Cf-Ray` 且配置了 Access 的请求（校验 Access JWT）→ 其余按内网处理，直接用默认用户。
+- 默认用户：`SHELFMARK_DEFAULT_USER` 指定；为空时取最早创建的用户。首次启动没有任何用户时自动建管理员（默认名 `admin`），不需要设置密码。
+- 多用户：公网按 `SHELFMARK_CF_ACCESS_USERS` 的邮箱映射到用户；没有映射时落到默认用户（单用户实例）。内网请求统一是默认用户。
 - API：`Authorization: Bearer <token>`，需要 scope `api`。
-- WebDAV：Basic，密码必须是 scope 含 `dav` 的令牌（不接受账户密码）。失败返回 401 + `WWW-Authenticate: Basic realm="shelfmark"`。
+- WebDAV：Basic，密码必须是 scope 含 `dav` 的令牌。内网不带凭据的请求落到默认用户；带了但验不过仍返回 401 + `WWW-Authenticate: Basic realm="shelfmark"`。
+- CSRF：非令牌的写请求必须带请求头 `X-Requested-With: shelfmark`，且 `Origin`（有则）必须与 `SHELFMARK_BASE_URL` 或请求 Host 同源。Access 的 `CF_Authorization` Cookie 是跨站可带的，这条不能省。服务端不开 CORS。
 - 令牌：32 字节随机，格式 `smk_<base62>`，只在创建时返回一次，库里存 sha256。记录最后使用时间和 IP（每分钟最多写一次）。
-- 限流：登录和 Basic 认证失败按 IP 计数，10 次/10 分钟后锁 15 分钟，返回 429。
+- 限流：Basic 认证失败按 IP 计数，10 次/10 分钟后锁 15 分钟，返回 429。
 - 可信代理：`SHELFMARK_TRUSTED_PROXIES`（CIDR 列表）内的来源才采信 `X-Forwarded-For`/`X-Forwarded-Proto`。
 - 安全响应头：`Content-Security-Policy: default-src 'self'; img-src 'self' data:; style-src 'self' 'unsafe-inline'; connect-src 'self'; frame-ancestors 'none'`、`X-Content-Type-Options: nosniff`、`Referrer-Policy: same-origin`。
 - 外链抓取（元数据、失效检测）：超时 15 秒，响应最多读 2 MiB，最多 5 次跳转，只允许 http/https。`SHELFMARK_FETCH_ALLOW_PRIVATE`（默认 true，自托管时内网书签也要能抓图标）设为 false 时拒绝私有/回环/链路本地地址（解析后校验，防 DNS 重绑定）。
 - 多用户隔离：所有查询带 `user_id`；库 slug 只在用户内唯一。
+- **部署前提**：没有密码意味着端口不能直接暴露到公网，必须放在 Cloudflare Access 或可信内网后面。`SHELFMARK_BASE_URL` 是 https 但没配 Access 时启动会打警告。
 
 ### 7.1 反代与 Cloudflare Access
 
-部署形态：内网域名直连家里反代 → shelfmark；公网域名走 Cloudflare Tunnel，前面套 Cloudflare Access（交互式登录，浏览器用）。代码要同时适配两条路：
+部署形态：内网域名直连家里反代 → shelfmark；公网域名走 Cloudflare Tunnel，前面套 Cloudflare Access（交互式登录，浏览器用）。两条路同域，靠 `Cf-Ray` 区分：
 
 - **多个来源**：`SHELFMARK_ALLOWED_ORIGINS`（逗号分隔，如 `https://bm.example.com,https://bm.lan.example.com`）。CSRF 的 Origin 校验对其中任一通过即可；为空时退回 `SHELFMARK_BASE_URL` 加请求 Host。`SHELFMARK_BASE_URL` 仍是“主地址”，用于生成 Floccus 配置。
 - **WebDAV 的 `Destination` 头**：只取路径部分判断是否在 `/dav/` 下，不要求主机名与请求 Host 相同（经多层反代后经常不同）。
 - **真实客户端 IP**：来自可信代理的请求，若带 `CF-Connecting-IP` 优先用它，其次 `X-Forwarded-For` 最左一个非可信地址。限流和日志都用它。
-- **Access 放行路径**：Floccus、手机 Floccus App 和插件做不了 Access 的交互登录，所以公网上 Access 对这些路径设为 bypass，靠 shelfmark 自己的认证（令牌或网页会话）：`/dav/`、`/api/`、`/manifest.webmanifest`、`/icons/`（PWA 安装时浏览器取后两样不一定带 Cookie）。其余路径（网页页面和静态资源）都在 Access 后面。
-- **插件过 Access**：`/api/` 放行后插件只用 shelfmark 的 `api` 令牌，不需要 Access 服务令牌。在公网上插件用“粘贴令牌”登录（令牌在网页“设置 → 设备与令牌”里生成），用户名密码登录会被下一条的二次把关拒绝。插件设置里仍保留可选的 `CF-Access-Client-Id` / `CF-Access-Client-Secret`，只在 `/api/` 也放在 Access 后面的部署里才需要：填了就每个 API 请求都带上这两个头，Access 应用为该服务令牌加一条 Service Auth 策略。
-- **密码类接口的二次把关**：`/api/` 放行后密码登录不再有 Access 挡在前面，所以请求带 `Cf-Ray` 头（说明经过了 Cloudflare，即来自公网）且配置了 Access 时，`/api/v1/setup`、`/api/v1/auth/login`、`/api/v1/auth/token`、`/api/v1/auth/password` 必须带有效的 Access JWT（请求头 `Cf-Access-Jwt-Assertion` 或 Cookie `CF_Authorization`），否则 403。网页是过了 Access 才打开的，同域 Cookie 里有 `CF_Authorization`，照常能登录；插件、脚本没有它，只能用令牌。用令牌认证的请求（Bearer、Basic）不受影响。内网直连的请求没有 `Cf-Ray`，照常用密码登录。
+- **Access 放行路径**：Floccus、手机 Floccus App 和插件做不了 Access 的交互登录，所以公网上 Access 对这些路径设为 bypass，靠 shelfmark 自己的令牌认证：`/dav/`、`/api/`、`/manifest.webmanifest`、`/icons/`（PWA 安装时浏览器取后两样不一定带 Cookie）。其余路径（网页页面和静态资源）都在 Access 后面。
+- **身份判定**：请求带 `Cf-Ray`（说明经过了 Cloudflare，即来自公网）且配置了 Access 时，必须带有效的 Access JWT（请求头 `Cf-Access-Jwt-Assertion` 或 Cookie `CF_Authorization`），否则 403；JWT 里的邮箱按 `SHELFMARK_CF_ACCESS_USERS` 映射到用户，没有映射就用默认用户。不带 `Cf-Ray` 的请求视为内网，直接用默认用户。Bearer / Basic 令牌认证的请求优先，不受这条影响。
 - **JWT 校验**：RS256，公钥从 `https://<team 域>/cdn-cgi/access/certs` 获取并缓存（1 小时刷新，遇到未知 `kid` 立即刷新），校验 `aud`（`SHELFMARK_CF_ACCESS_AUD`，可多个）、`iss`（`https://<team 域>`）、`exp`/`nbf`（允许 60 秒偏差）。
-- **单点登录（可选）**：`SHELFMARK_CF_ACCESS_USERS=alice=alice@example.com,bob=bob@example.org` 把 Access 邮箱映射到 shelfmark 用户。网页登录页先调 `POST /api/v1/auth/access`：JWT 有效且邮箱有映射 → 直接建立会话，不用再输密码；否则显示密码登录。`SystemInfo.features.cfAccessSso` 表示是否启用。
-- **网页适配 Access 会话过期**：Access 会话过期后，页面和静态资源请求会被重定向到 Access 登录页；`/api/` 放行时 API 照常可用，但密码登录会因 `CF_Authorization` 过期被 403；`/api/` 也在 Access 后面的部署里，API 请求同样会被重定向（跨域，`fetch` 表现为网络错误或拿到 HTML）。网页要识别这种情况，提示“Cloudflare 登录已过期”，点一下整页刷新重新登录；Service Worker 不得把 Access 登录页当成应用页面缓存，导航请求只在真正断网时才回退到缓存。`<link rel="manifest">` 加 `crossorigin="use-credentials"`。
+- **插件过 Access**：`/api/` 放行后插件只用 shelfmark 的 `api` 令牌，不需要 Access 服务令牌。插件设置里仍保留可选的 `CF-Access-Client-Id` / `CF-Access-Client-Secret`，只在 `/api/` 也放在 Access 后面的部署里才需要：填了就每个 API 请求都带上这两个头，Access 应用为该服务令牌加一条 Service Auth 策略。
+- **网页适配 Access 会话过期**：Access 会话过期后，页面和静态资源请求会被重定向到 Access 登录页；`/api/` 放行时 API 会因 `CF_Authorization` 过期返回 401。网页识别后提示“Cloudflare 登录已过期”，点一下整页刷新重新登录；Service Worker 不得把 Access 登录页当成应用页面缓存，导航请求只在真正断网时才回退到缓存。`<link rel="manifest">` 加 `crossorigin="use-credentials"`。
 - **插件识别被 Access 拦截**（`/api/` 也在 Access 后面的部署）：响应是跳转到 `*.cloudflareaccess.com`、或拿到 HTML、或 Access 的 403 → 提示“被 Cloudflare Access 拦截，请在设置里填服务令牌”。插件里的图标用带认证头的 `fetch` 取回再转成 blob URL，不能直接 `<img src>`。
 
 ## 8. REST API
@@ -252,7 +254,7 @@ items_fts(title, url, notes, tags, path)   -- rowid 映射到 (library_id, item_
 - 前缀 `/api/v1`，JSON，错误统一 `{"error":{"code","message","details"}}`。错误码：`unauthorized`、`forbidden`、`not_found`、`conflict`、`locked`、`validation`、`payload_too_large`、`unsupported_media_type`、`rate_limited`、`guarded`、`internal`。
 - 写操作响应里带最新 `revision`。树接口支持 `ETag: "r<revision>"` / `If-None-Match` → 304。
 - 自定义动作用子路径动词（如 `items/batch`、`lock/release`、`pending/{id}/approve`），方便 Go 1.22 `ServeMux` 路由。
-- 分组：auth、setup、users、tokens、floccus、libraries、tree/items、quick-save/lookup、search、tags、visits、favicons、meta、revisions、deleted、pending、reports、jobs、import/export、settings、ai、system。
+- 分组：auth、users、tokens、floccus、libraries、tree/items、quick-save/lookup、search、tags、visits、favicons、meta、revisions、deleted、pending、reports、jobs、import/export、settings、ai、system。
 
 ## 9. 搜索
 
@@ -305,8 +307,6 @@ items_fts(title, url, notes, tags, path)   -- rowid 映射到 (library_id, item_
 
 | 路径 | 内容 |
 |---|---|
-| `/setup` | 首次设置管理员（仅无用户时） |
-| `/login` | 登录 |
 | `/` | 书签页（起始页）：顶部搜索框（自动聚焦，回车搜索，直接输入网址则打开），下方按设置展示若干文件夹分组（网格卡片：图标 + 标题），可选“最近添加”“常用”。适合设为浏览器主页。 |
 | `/lib/:slug`、`/lib/:slug/f/:folderId` | 管理器：文件夹树（展开折叠、拖放）、条目列表（图标、标题、域名、标签、失效标记），拖放排序和移动（鼠标与触屏都支持；窄屏另有“移动到…”对话框），多选批量移动/删除/打标签，行内编辑，新建书签（粘贴 URL 自动取标题）/文件夹，右键菜单。顶部显示库同步状态（最后同步设备和时间、被锁提示与强制解锁）。 |
 | `/search?q=` | 搜索结果，支持第 9 节语法，结果显示路径、高亮。 |
@@ -316,13 +316,13 @@ items_fts(title, url, notes, tags, path)   -- rowid 映射到 (library_id, item_
 | `/pending/:slug/:id` | 被拦截的上传：差异、允许、丢弃。全局顶部横幅提示有待确认项。 |
 | `/reports/broken` | 失效链接：筛选状态，批量删除、改为跳转后的地址、重新检测。 |
 | `/reports/duplicates` | 重复书签分组，选择保留哪个，其余删除。 |
-| `/settings/account` | 修改密码、语言、主题、在新标签页打开、默认收藏位置。 |
+| `/settings/account` | 当前身份、语言、主题、在新标签页打开、默认收藏位置。 |
 | `/settings/devices` | 设备令牌列表（名称、scope、最后使用）、吊销；“添加 Floccus 设备”向导：选库 → 生成令牌 → 显示服务器地址/用户名/密码/文件名（一键复制），可下载 Floccus 配置文件（若服务端返回）；“添加插件/脚本令牌”。 |
 | `/settings/libraries` | 库列表、新建、改名（提示需同步改 Floccus 文件名）、删除（二次确认，输入 slug）。 |
 | `/settings/startpage` | 配置起始页分组（选库和文件夹、排序、布局）。 |
 | `/settings/import-export` | 导入（选库、模式、文件）、导出（库、格式）。 |
 | `/settings/integrations` | 插件下载（`/downloads/` 下的 zip 和安装说明）、书签小工具（bookmarklet，指向 `/add?url=...&title=...`）、AI 状态、任务状态与手动触发。 |
-| `/settings/users` | 管理员：用户增删、重置密码。 |
+| `/settings/users` | 管理员：用户增删、调整管理员身份。 |
 | `/settings/about` | 版本、数据统计。 |
 
 ### 12.3 交互细节
@@ -345,7 +345,7 @@ items_fts(title, url, notes, tags, path)   -- rowid 映射到 (library_id, item_
 - 不申请 `bookmarks` 权限，不读写浏览器原生书签。
 - 权限：`storage`、`contextMenus`、`activeTab`、`tabs`（读当前页 URL/标题）、`alarms`；`optional_host_permissions: ["http://*/*","https://*/*"]`，在设置服务器地址时只申请该源。
 - 功能：
-  - 设置页：服务器地址；可选的 Cloudflare Access 服务令牌（Client ID / Secret，见 7.1）；用户名 + 密码登录（调 `POST /api/v1/auth/token` 生成 `api` 令牌，名字形如“插件 · Chrome · Linux”）或直接粘贴令牌；测试连接；默认收藏位置；是否接管新标签页内容。
+  - 设置页：服务器地址；可选的 Cloudflare Access 服务令牌（Client ID / Secret，见 7.1）；粘贴令牌（在网页“设置 → 设备与令牌”生成，scope 含 `api`）；测试连接；默认收藏位置；是否接管新标签页内容。
   - 弹窗：当前页是否已收藏（显示位置），收藏到库/文件夹（最近使用置顶、可搜索），编辑标题/标签/备注，删除；AI 开启时显示推荐。
   - 图标角标：当前页已收藏显示 ✓（`lookup` 结果按 URL 缓存 5 分钟）。
   - 右键菜单：“收藏此页”“收藏此链接”。
@@ -366,8 +366,8 @@ items_fts(title, url, notes, tags, path)   -- rowid 映射到 (library_id, item_
 | `SHELFMARK_ALLOWED_ORIGINS` | 空 | 允许的网页来源，逗号分隔（内网域名、公网域名都列上） |
 | `SHELFMARK_CF_ACCESS_TEAM_DOMAIN` | 空 | Access 团队域，如 `example.cloudflareaccess.com`；为空则不启用 7.1 的 Access 相关逻辑 |
 | `SHELFMARK_CF_ACCESS_AUD` | 空 | Access 应用的 AUD 标签，逗号分隔可多个 |
-| `SHELFMARK_CF_ACCESS_USERS` | 空 | 单点登录映射 `用户名=邮箱`，逗号分隔 |
-| `SHELFMARK_ADMIN_USER` / `SHELFMARK_ADMIN_PASSWORD` | 空 | 首次启动建管理员 |
+| `SHELFMARK_CF_ACCESS_USERS` | 空 | Access 邮箱到用户的映射 `用户名=邮箱`，逗号分隔 |
+| `SHELFMARK_DEFAULT_USER` | 空 | 内网请求用的用户；首次启动没有用户时用它建管理员（默认 `admin`） |
 | `SHELFMARK_DAV_AUTO_CREATE` | `true` | Floccus 上传到不存在的库文件时自动建库 |
 | `SHELFMARK_GUARD_RATIO` / `SHELFMARK_GUARD_MIN_ITEMS` | `0.5` / `20` | 防误删阈值，比例 0 关闭 |
 | `SHELFMARK_REVISION_KEEP_DAYS` / `SHELFMARK_REVISION_KEEP_DAILY_DAYS` | `30` / `365` | 修订保留 |

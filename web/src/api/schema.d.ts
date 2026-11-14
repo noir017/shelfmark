@@ -36,72 +36,6 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/v1/setup": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /** 首次设置管理员，仅在没有任何用户时可用，成功后直接登录 */
-        post: operations["setupAdmin"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/auth/login": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        post: operations["login"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/auth/access": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /** 用 Cloudflare Access 身份换会话（单点登录）。需要有效的 Access JWT 且邮箱在 SHELFMARK_CF_ACCESS_USERS 里有映射 */
-        post: operations["loginWithAccess"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/auth/logout": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        post: operations["logout"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
     "/api/v1/auth/me": {
         parameters: {
             query?: never;
@@ -112,39 +46,6 @@ export interface paths {
         get: operations["getMe"];
         put?: never;
         post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/auth/password": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        post: operations["changePassword"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/auth/token": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /** 用用户名密码换一个令牌（插件登录用），无需会话 */
-        post: operations["createTokenWithPassword"];
         delete?: never;
         options?: never;
         head?: never;
@@ -185,7 +86,7 @@ export interface paths {
         delete: operations["deleteUser"];
         options?: never;
         head?: never;
-        /** 仅管理员；重置密码或调整管理员身份 */
+        /** 仅管理员；调整管理员身份 */
         patch: operations["updateUser"];
         trace?: never;
     };
@@ -995,15 +896,9 @@ export interface components {
         TagName: string;
         /** Format: date-time */
         Timestamp: string;
-        Credentials: {
-            username: components["schemas"]["Username"];
-            password: string;
-        };
         SystemInfo: {
             version: string;
             commit: string;
-            /** @description 没有任何用户时为 true */
-            needsSetup: boolean;
             /** @example /dav/ */
             davPath: string;
             baseUrl?: string | null;
@@ -1013,8 +908,8 @@ export interface components {
                 linkcheck: boolean;
                 metadata: boolean;
                 autoCreateLibrary: boolean;
-                /** @description 已配置 Access 单点登录映射 */
-                cfAccessSso: boolean;
+                /** @description 已配置 Cloudflare Access（经 Cloudflare 的请求会校验 Access JWT） */
+                cfAccess: boolean;
             };
         };
         User: {
@@ -1027,7 +922,9 @@ export interface components {
         Me: {
             user: components["schemas"]["User"];
             /** @enum {string} */
-            authMethod: "session" | "token" | "access";
+            authMethod: "token" | "access" | "lan";
+            /** @description 经 Cloudflare Access 时的登录邮箱 */
+            email?: string;
         };
         /** @enum {string} */
         Scope: "api" | "dav";
@@ -1701,98 +1598,6 @@ export interface operations {
             };
         };
     };
-    setupAdmin: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["Credentials"];
-            };
-        };
-        responses: {
-            /** @description 已创建并登录（Set-Cookie） */
-            201: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["Me"];
-                };
-            };
-            409: components["responses"]["Conflict"];
-            422: components["responses"]["Validation"];
-        };
-    };
-    login: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["Credentials"];
-            };
-        };
-        responses: {
-            /** @description 登录成功（Set-Cookie） */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["Me"];
-                };
-            };
-            401: components["responses"]["Unauthorized"];
-            429: components["responses"]["RateLimited"];
-        };
-    };
-    loginWithAccess: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description 已登录（Set-Cookie） */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["Me"];
-                };
-            };
-            401: components["responses"]["Unauthorized"];
-            503: components["responses"]["Unavailable"];
-        };
-    };
-    logout: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description 已退出 */
-            204: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-        };
-    };
     getMe: {
         parameters: {
             query?: never;
@@ -1812,64 +1617,6 @@ export interface operations {
                 };
             };
             401: components["responses"]["Unauthorized"];
-        };
-    };
-    changePassword: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": {
-                    currentPassword: string;
-                    newPassword: string;
-                };
-            };
-        };
-        responses: {
-            /** @description 已修改（其它会话失效） */
-            204: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            401: components["responses"]["Unauthorized"];
-            422: components["responses"]["Validation"];
-        };
-    };
-    createTokenWithPassword: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": {
-                    username: string;
-                    password: string;
-                    name: string;
-                    scopes: components["schemas"]["Scope"][];
-                };
-            };
-        };
-        responses: {
-            /** @description 令牌（明文只返回这一次） */
-            201: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["TokenCreated"];
-                };
-            };
-            401: components["responses"]["Unauthorized"];
-            429: components["responses"]["RateLimited"];
         };
     };
     listUsers: {
@@ -1904,7 +1651,6 @@ export interface operations {
             content: {
                 "application/json": {
                     username: components["schemas"]["Username"];
-                    password: string;
                     /** @default false */
                     isAdmin?: boolean;
                 };
@@ -1960,7 +1706,6 @@ export interface operations {
         requestBody: {
             content: {
                 "application/json": {
-                    password?: string;
                     isAdmin?: boolean;
                 };
             };

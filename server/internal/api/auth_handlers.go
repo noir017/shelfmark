@@ -1,11 +1,9 @@
 package api
 
 import (
-	"errors"
 	"fmt"
 	"net/http"
 	"net/url"
-	"strconv"
 	"strings"
 
 	"shelfmark/internal/auth"
@@ -17,190 +15,26 @@ import (
 type meJSON struct {
 	User       userJSON `json:"user"`
 	AuthMethod string   `json:"authMethod"`
-}
-
-type credentials struct {
-	Username string `json:"username"`
-	Password string `json:"password"`
+	Email      string   `json:"email,omitempty"`
 }
 
 func (a *API) systemInfo(w http.ResponseWriter, r *http.Request) error {
-	n, err := store.CountUsers(r.Context(), a.DB)
-	if err != nil {
-		return err
-	}
 	var base *string
 	if a.Cfg.BaseURL != "" {
 		base = &a.Cfg.BaseURL
 	}
 	writeJSON(w, 200, map[string]any{
-		"version": config.Version, "commit": config.Commit, "needsSetup": n == 0, "davPath": "/dav/", "baseUrl": base,
+		"version": config.Version, "commit": config.Commit, "davPath": "/dav/", "baseUrl": base,
 		"features": map[string]bool{
 			"ai": a.AI != nil, "metrics": a.Cfg.Metrics, "linkcheck": a.Cfg.LinkcheckInterval > 0,
-			"metadata": a.Cfg.FetchMetadata, "autoCreateLibrary": a.Cfg.DAVAutoCreate, "cfAccessSso": a.Cfg.AccessSSO(),
+			"metadata": a.Cfg.FetchMetadata, "autoCreateLibrary": a.Cfg.DAVAutoCreate, "cfAccess": a.Cfg.AccessEnabled(),
 		},
 	})
 	return nil
 }
 
-// rateLimited rejects blocked IPs with 429.
-func (a *API) rateLimited(r *http.Request) error {
-	ip := auth.ClientIP(r, a.Cfg.TrustedProxies)
-	if blocked, d := a.Auth.Limiter.Blocked(ip); blocked {
-		return &Error{Status: 429, Code: "rate_limited", Message: "失败次数过多，请稍后再试",
-			Headers: map[string]string{"Retry-After": strconv.Itoa(int(d.Seconds()) + 1)}}
-	}
-	return nil
-}
-
-func (a *API) fail(r *http.Request) {
-	a.Auth.Limiter.Fail(auth.ClientIP(r, a.Cfg.TrustedProxies))
-}
-
-func (a *API) setup(w http.ResponseWriter, r *http.Request) error {
-	if err := a.Auth.CheckPasswordGate(r); err != nil {
-		return err
-	}
-	var c credentials
-	if err := decode(r, &c); err != nil {
-		return err
-	}
-	if !core.ValidUsername(c.Username) {
-		return validation("username", "用户名只能包含字母、数字和 . _ -，最长 64 位")
-	}
-	if err := auth.CheckPassword(c.Password); err != nil {
-		return validation("password", err.Error())
-	}
-	n, err := store.CountUsers(r.Context(), a.DB)
-	if err != nil {
-		return err
-	}
-	if n > 0 {
-		return errf(409, "conflict", "已经设置过管理员")
-	}
-	hash, err := auth.HashPassword(c.Password)
-	if err != nil {
-		return err
-	}
-	u, err := a.Core.CreateUser(r.Context(), c.Username, hash, true)
-	if err != nil {
-		return err
-	}
-	if _, err := a.Auth.StartSession(r.Context(), w, r, u, "session"); err != nil {
-		return err
-	}
-	writeJSON(w, 201, meJSON{User: toUser(u), AuthMethod: "session"})
-	return nil
-}
-
-func (a *API) checkCredentials(r *http.Request, username, password string) (*store.User, error) {
-	if err := a.rateLimited(r); err != nil {
-		return nil, err
-	}
-	u, err := store.GetUserByName(r.Context(), a.DB, username)
-	if err != nil && !errors.Is(err, store.ErrNotFound) {
-		return nil, err
-	}
-	hash := ""
-	if u != nil {
-		hash = u.PasswordHash
-	}
-	if !auth.VerifyOrDummy(hash, password) || u == nil {
-		a.fail(r)
-		return nil, errf(401, "unauthorized", "用户名或密码错误")
-	}
-	return u, nil
-}
-
-func (a *API) login(w http.ResponseWriter, r *http.Request) error {
-	if err := a.Auth.CheckPasswordGate(r); err != nil {
-		return err
-	}
-	var c credentials
-	if err := decode(r, &c); err != nil {
-		return err
-	}
-	u, err := a.checkCredentials(r, c.Username, c.Password)
-	if err != nil {
-		return err
-	}
-	if _, err := a.Auth.StartSession(r.Context(), w, r, u, "session"); err != nil {
-		return err
-	}
-	writeJSON(w, 200, meJSON{User: toUser(u), AuthMethod: "session"})
-	return nil
-}
-
-// loginWithAccess is Cloudflare Access single sign-on (design 7.1).
-func (a *API) loginWithAccess(w http.ResponseWriter, r *http.Request) error {
-	if !a.Cfg.AccessSSO() {
-		return errf(503, "unavailable", "未配置 Cloudflare Access 单点登录")
-	}
-	u, err := a.Auth.AccessUser(r)
-	if err != nil {
-		if errors.Is(err, auth.ErrAccessMissing) || errors.Is(err, auth.ErrAccessInvalid) {
-			return errf(401, "unauthorized", "没有有效的 Access 身份，或该邮箱未映射到用户")
-		}
-		return err
-	}
-	if _, err := a.Auth.StartSession(r.Context(), w, r, u, "access"); err != nil {
-		return err
-	}
-	writeJSON(w, 200, meJSON{User: toUser(u), AuthMethod: "access"})
-	return nil
-}
-
-func (a *API) logout(w http.ResponseWriter, r *http.Request, p *auth.Principal) error {
-	if err := a.Auth.EndSession(r.Context(), w, r, p); err != nil {
-		return err
-	}
-	w.WriteHeader(204)
-	return nil
-}
-
 func (a *API) me(w http.ResponseWriter, r *http.Request, p *auth.Principal) error {
-	writeJSON(w, 200, meJSON{User: toUser(p.User), AuthMethod: p.Method()})
-	return nil
-}
-
-func (a *API) changePassword(w http.ResponseWriter, r *http.Request, p *auth.Principal) error {
-	if !p.IsToken() {
-		if err := a.Auth.CheckPasswordGate(r); err != nil {
-			return err
-		}
-	}
-	if err := a.rateLimited(r); err != nil {
-		return err
-	}
-	var body struct {
-		CurrentPassword string `json:"currentPassword"`
-		NewPassword     string `json:"newPassword"`
-	}
-	if err := decode(r, &body); err != nil {
-		return err
-	}
-	if err := auth.CheckPassword(body.NewPassword); err != nil {
-		return validation("newPassword", err.Error())
-	}
-	if !auth.VerifyPassword(p.User.PasswordHash, body.CurrentPassword) {
-		a.fail(r)
-		return errf(401, "unauthorized", "当前密码不正确")
-	}
-	hash, err := auth.HashPassword(body.NewPassword)
-	if err != nil {
-		return err
-	}
-	if err := store.SetUserPassword(r.Context(), a.DB, p.User.ID, hash, a.Core.Now()); err != nil {
-		return err
-	}
-	keep := ""
-	if p.Session != nil {
-		keep = p.Session.ID
-	}
-	if err := store.DeleteUserSessions(r.Context(), a.DB, p.User.ID, keep); err != nil {
-		return err
-	}
-	w.WriteHeader(204)
+	writeJSON(w, 200, meJSON{User: toUser(p.User), AuthMethod: p.Method(), Email: p.Email})
 	return nil
 }
 
@@ -244,31 +78,6 @@ func (a *API) issueToken(r *http.Request, u *store.User, name string, scopes []s
 	return j, nil
 }
 
-func (a *API) tokenWithPassword(w http.ResponseWriter, r *http.Request) error {
-	if err := a.Auth.CheckPasswordGate(r); err != nil {
-		return err
-	}
-	var body struct {
-		Username string   `json:"username"`
-		Password string   `json:"password"`
-		Name     string   `json:"name"`
-		Scopes   []string `json:"scopes"`
-	}
-	if err := decode(r, &body); err != nil {
-		return err
-	}
-	u, err := a.checkCredentials(r, body.Username, body.Password)
-	if err != nil {
-		return err
-	}
-	t, err := a.issueToken(r, u, body.Name, body.Scopes)
-	if err != nil {
-		return err
-	}
-	writeJSON(w, 201, t)
-	return nil
-}
-
 // ---- users (admin) ----
 
 func (a *API) listUsers(w http.ResponseWriter, r *http.Request, p *auth.Principal) error {
@@ -293,20 +102,12 @@ func (a *API) createUser(w http.ResponseWriter, r *http.Request, p *auth.Princip
 	}
 	var body struct {
 		Username string `json:"username"`
-		Password string `json:"password"`
 		IsAdmin  bool   `json:"isAdmin"`
 	}
 	if err := decode(r, &body); err != nil {
 		return err
 	}
-	if err := auth.CheckPassword(body.Password); err != nil {
-		return validation("password", err.Error())
-	}
-	hash, err := auth.HashPassword(body.Password)
-	if err != nil {
-		return err
-	}
-	u, err := a.Core.CreateUser(r.Context(), body.Username, hash, body.IsAdmin)
+	u, err := a.Core.CreateUser(r.Context(), body.Username, body.IsAdmin)
 	if err != nil {
 		return err
 	}
@@ -331,18 +132,12 @@ func (a *API) updateUser(w http.ResponseWriter, r *http.Request, p *auth.Princip
 		return err
 	}
 	var body struct {
-		Password *string `json:"password"`
-		IsAdmin  *bool   `json:"isAdmin"`
+		IsAdmin *bool `json:"isAdmin"`
 	}
 	if err := decode(r, &body); err != nil {
 		return err
 	}
 	ctx := r.Context()
-	if body.Password != nil {
-		if err := auth.CheckPassword(*body.Password); err != nil {
-			return validation("password", err.Error())
-		}
-	}
 	if body.IsAdmin != nil && !*body.IsAdmin && u.IsAdmin {
 		n, err := store.CountAdmins(ctx, a.DB)
 		if err != nil {
@@ -350,18 +145,6 @@ func (a *API) updateUser(w http.ResponseWriter, r *http.Request, p *auth.Princip
 		}
 		if n <= 1 {
 			return errf(409, "conflict", "不能取消最后一个管理员")
-		}
-	}
-	if body.Password != nil {
-		hash, err := auth.HashPassword(*body.Password)
-		if err != nil {
-			return err
-		}
-		if err := store.SetUserPassword(ctx, a.DB, u.ID, hash, a.Core.Now()); err != nil {
-			return err
-		}
-		if err := store.DeleteUserSessions(ctx, a.DB, u.ID, ""); err != nil {
-			return err
 		}
 	}
 	if body.IsAdmin != nil {

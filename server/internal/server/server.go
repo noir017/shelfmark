@@ -98,7 +98,10 @@ func NewWithDB(cfg *config.Config, log *slog.Logger, db *store.DB, static fs.FS)
 	}
 	s.Metrics.Registry.Collect(s.collect)
 	if cfg.AccessEnabled() && len(cfg.CFAccessAUD) == 0 {
-		log.Warn("SHELFMARK_CF_ACCESS_TEAM_DOMAIN 已设置但没有 SHELFMARK_CF_ACCESS_AUD：经 Cloudflare 的密码类请求都会被拒绝")
+		log.Warn("SHELFMARK_CF_ACCESS_TEAM_DOMAIN 已设置但没有 SHELFMARK_CF_ACCESS_AUD：经 Cloudflare 的请求都会返回 403")
+	}
+	if strings.HasPrefix(strings.ToLower(cfg.BaseURL), "https://") && !cfg.AccessEnabled() {
+		log.Warn("SHELFMARK_BASE_URL 是 https 但没有配置 Cloudflare Access：内网之外任何人都能直接读写，务必只监听在可信网络里")
 	}
 
 	mux := http.NewServeMux()
@@ -118,25 +121,19 @@ func NewWithDB(cfg *config.Config, log *slog.Logger, db *store.DB, static fs.FS)
 }
 
 func (s *Server) bootstrapAdmin(ctx context.Context) error {
-	if s.Cfg.AdminUser == "" || s.Cfg.AdminPassword == "" {
-		return nil
-	}
 	n, err := store.CountUsers(ctx, s.DB)
 	if err != nil || n > 0 {
 		return err
 	}
-	if err := auth.CheckPassword(s.Cfg.AdminPassword); err != nil {
-		return fmt.Errorf("SHELFMARK_ADMIN_PASSWORD: %w", err)
+	name := s.Cfg.DefaultUser
+	if name == "" {
+		name = "admin"
 	}
-	hash, err := auth.HashPassword(s.Cfg.AdminPassword)
-	if err != nil {
-		return err
+	if _, err := s.Core.CreateUser(ctx, name, true); err != nil {
+		return fmt.Errorf("创建默认用户 %s: %w", name, err)
 	}
-	_, err = s.Core.CreateUser(ctx, s.Cfg.AdminUser, hash, true)
-	if err == nil {
-		s.Log.Info("created admin user", "username", s.Cfg.AdminUser)
-	}
-	return err
+	s.Log.Info("created default admin user", "username", name)
+	return nil
 }
 
 func (s *Server) collect(w io.Writer) {

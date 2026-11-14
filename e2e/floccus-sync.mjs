@@ -4,7 +4,6 @@ import { createRequire } from 'node:module';
 import { cp, mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { randomBytes } from 'node:crypto';
 // 借用 extension/ 装好的 Playwright
 const { chromium, request } = createRequire(new URL('../extension/package.json', import.meta.url))('@playwright/test');
 
@@ -15,9 +14,7 @@ const H = { 'X-Requested-With': 'shelfmark' };
 const api = await request.newContext({ baseURL: BASE, extraHTTPHeaders: H });
 const ok = async (r) => { const res = await r; if (!res.ok()) throw new Error(`${res.url()} ${res.status()} ${await res.text()}`); return res.status() === 204 ? null : res.json(); };
 
-// 1. admin + server-side seed
-const password = randomBytes(12).toString('hex');
-await ok(api.post('/api/v1/setup', { data: { username: 'alice', password } }));
+// 1. server-side seed（内网直连，身份是首次启动自动建的 admin）
 const add = (data) => ok(api.post('/api/v1/libraries/bookmarks/items', { data }));
 const sf = await add({ type: 'folder', title: '服务器文件夹' });
 await add({ type: 'bookmark', title: 'Server A', url: 'https://a.example.com/', parentId: sf.item.id });

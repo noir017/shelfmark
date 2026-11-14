@@ -15,9 +15,8 @@ services:
       SHELFMARK_ALLOWED_ORIGINS: https://bm.example.com,https://bm.lan.example.com
       # 反代所在网段，只有它们的 X-Forwarded-* / CF-Connecting-IP 才被采信
       SHELFMARK_TRUSTED_PROXIES: 172.16.0.0/12
-      # 首次启动建管理员；不设则打开网页走“首次设置”
-      # SHELFMARK_ADMIN_USER: alice
-      # SHELFMARK_ADMIN_PASSWORD: change-me-please
+      # 内网请求用的用户；不设则用最早创建的用户（首次启动会自动建 admin）
+      # SHELFMARK_DEFAULT_USER: alice
       # 前面套 Cloudflare Access 时才需要，见 README
       # SHELFMARK_CF_ACCESS_TEAM_DOMAIN: example.cloudflareaccess.com
       # SHELFMARK_CF_ACCESS_AUD: your-access-app-aud-tag

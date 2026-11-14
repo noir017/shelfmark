@@ -49,6 +49,7 @@ func TestCloudflareAccess(t *testing.T) {
 		c.CFAccessAUD = []string{"aud-1"}
 		c.CFAccessUsers = map[string]string{"alice": "alice@example.com"}
 	})
+	e.setup()
 	v := e.srv.Auth.Access
 	v.CertsURL = certs.URL
 	v.Client = certs.Client()
@@ -60,47 +61,33 @@ func TestCloudflareAccess(t *testing.T) {
 		return m
 	}
 	ray := map[string]string{"Cf-Ray": "8abc-SJC"}
-	creds := map[string]string{"username": "alice", "password": "correct horse"}
-	// setup through Cloudflare without a JWT is refused; the LAN path (no Cf-Ray) works
-	e.expect(e.do("POST", "/api/v1/setup", creds, ray), 403)
-	e.setup()
-	e.expect(e.api("POST", "/api/v1/auth/logout", nil), 204)
-	e.expect(e.do("POST", "/api/v1/auth/login", creds, ray), 403)
-	bad := signJWT(t, key, claims(map[string]any{"aud": "other"}))
-	e.expect(e.do("POST", "/api/v1/auth/login", creds, map[string]string{"Cf-Ray": "1", "Cf-Access-Jwt-Assertion": bad}), 403)
-	// a service token JWT (common_name, no email) is enough for password endpoints
-	service := signJWT(t, key, claims(map[string]any{"common_name": "abc.access", "sub": ""}))
-	e.expect(e.do("POST", "/api/v1/auth/token", map[string]any{"username": "alice", "password": "correct horse", "name": "插件", "scopes": []string{"api"}},
-		map[string]string{"Cf-Ray": "1", "Cf-Access-Jwt-Assertion": service, "Origin": "chrome-extension://x"}), 201)
-	// ...but not for single sign-on, which needs a mapped email
-	e.expect(e.do("POST", "/api/v1/auth/access", nil, map[string]string{"Cf-Access-Jwt-Assertion": service}), 401)
+	// 经 Cloudflare 没有 Access 身份 → 403
+	e.expect(e.do("GET", "/api/v1/auth/me", nil, ray), 403)
+	bad := signJWT(t, key, claims(map[string]any{"email": "alice@example.com", "aud": "other"}))
+	e.expect(e.do("GET", "/api/v1/auth/me", nil, map[string]string{"Cf-Ray": "1", "Cf-Access-Jwt-Assertion": bad}), 403)
+	// 合法身份 → 直接就是映射的用户
 	user := signJWT(t, key, claims(map[string]any{"email": "Alice@example.com"}))
-	e.expect(e.do("POST", "/api/v1/auth/login", creds, map[string]string{"Cf-Ray": "1", "Cookie": "CF_Authorization=" + user}), 200)
-	e.expect(e.api("POST", "/api/v1/auth/logout", nil), 204)
-	var me struct{ AuthMethod string }
-	e.expect(e.do("POST", "/api/v1/auth/access", nil, map[string]string{"Cf-Ray": "1", "Cf-Access-Jwt-Assertion": user}), 200).json(t, &me)
-	if me.AuthMethod != "access" {
-		t.Fatalf("method %s", me.AuthMethod)
+	var me struct{ AuthMethod, Email string }
+	e.expect(e.do("GET", "/api/v1/auth/me", nil, map[string]string{"Cf-Ray": "1", "Cf-Access-Jwt-Assertion": user}), 200).json(t, &me)
+	if me.AuthMethod != "access" || me.Email != "alice@example.com" {
+		t.Fatalf("me %+v", me)
 	}
-	e.expect(e.api("GET", "/api/v1/auth/me", nil), 200).json(t, &me)
-	if me.AuthMethod != "access" {
-		t.Fatalf("session method %s", me.AuthMethod)
-	}
-	// password change through Cloudflare with a session needs the JWT too; Bearer does not
-	e.expect(e.do("POST", "/api/v1/auth/password", map[string]string{"currentPassword": "correct horse", "newPassword": "new password1"},
-		map[string]string{"Cf-Ray": "1", "X-Requested-With": "shelfmark"}), 403)
-	e.expect(e.do("POST", "/api/v1/auth/password", map[string]string{"currentPassword": "correct horse", "newPassword": "new password1"},
-		map[string]string{"Cf-Ray": "1", "Authorization": "Bearer " + e.apiToken}), 204)
-	var info struct{ Features struct{ CfAccessSso bool } }
+	// CF_Authorization Cookie 同样有效
+	e.expect(e.do("GET", "/api/v1/auth/me", nil, map[string]string{"Cf-Ray": "1", "Cookie": "CF_Authorization=" + user}), 200).json(t, &me)
+	// 服务令牌（没有邮箱）落到默认用户
+	service := signJWT(t, key, claims(map[string]any{"common_name": "abc.access", "sub": ""}))
+	e.expect(e.do("GET", "/api/v1/auth/me", nil, map[string]string{"Cf-Ray": "1", "Cf-Access-Jwt-Assertion": service}), 200)
+	// 经 Cloudflare 的写请求仍要 CSRF 头
+	e.expect(e.do("POST", "/api/v1/libraries/bookmarks/items", map[string]any{"type": "folder", "title": "x"},
+		map[string]string{"Cf-Ray": "1", "Cf-Access-Jwt-Assertion": user}), 403)
+	e.expect(e.do("POST", "/api/v1/libraries/bookmarks/items", map[string]any{"type": "folder", "title": "x"},
+		map[string]string{"Cf-Ray": "1", "Cf-Access-Jwt-Assertion": user, "X-Requested-With": "shelfmark"}), 201)
+	var info struct{ Features struct{ CfAccess bool } }
 	e.expect(e.api("GET", "/api/v1/system/info", nil), 200).json(t, &info)
-	if !info.Features.CfAccessSso {
-		t.Fatal("cfAccessSso")
+	if !info.Features.CfAccess {
+		t.Fatal("cfAccess")
 	}
-	// Floccus via Cloudflare is unaffected (token auth)
+	// Floccus 经 Cloudflare 仍然走 dav 令牌
 	e.expect(e.dav("GET", "bookmarks.xbel", nil, ray), 200)
-}
-
-func TestAccessSSODisabled(t *testing.T) {
-	e := newEnv(t, nil)
-	e.expect(e.do("POST", "/api/v1/auth/access", nil, nil), 503)
+	e.expect(e.do("GET", "/dav/bookmarks.xbel", nil, ray), 401)
 }

@@ -8,6 +8,8 @@
 
 数据存在一个 SQLite 文件里，每次改动都有修订，可回滚；Floccus 大批量删除会先被拦下等你确认。
 
+> **安全前提**：shelfmark 没有登录页，身份由网络位置决定 —— 内网请求直接是默认用户，经 Cloudflare 的请求必须带有效的 Access 身份。**只能部署在 Cloudflare Access 后面或可信内网里**，绝不要把端口直接暴露到公网。
+
 ## 快速开始（Docker Compose）
 
 ```sh
@@ -20,10 +22,10 @@ mkdir -p data && sudo chown 65532:65532 data   # 容器以 uid 65532 运行
 docker compose up -d
 ```
 
-端口只绑 `127.0.0.1:8080`，前面接反代（Caddy、Nginx、Cloudflare Tunnel 等）提供 HTTPS。打开网页按“首次设置”建管理员；也可以在 compose 里设 `SHELFMARK_ADMIN_USER` / `SHELFMARK_ADMIN_PASSWORD`，或：
+端口只绑 `127.0.0.1:8080`，前面接反代（Caddy、Nginx、Cloudflare Tunnel 等）提供 HTTPS。首次启动会自动建管理员 `admin`（也可以用 `SHELFMARK_DEFAULT_USER` 指定名字），打开网页直接就是它，没有登录页。需要多用户时：
 
 ```sh
-docker compose exec -T shelfmark shelfmark user add alice --admin --password-stdin <<<'密码'
+docker compose exec -T shelfmark shelfmark user add alice --admin
 ```
 
 ## 配置 Floccus
@@ -37,7 +39,7 @@ docker compose exec -T shelfmark shelfmark user add alice --admin --password-std
 | 服务器地址 | `https://bm.example.com/dav/` |
 | 书签文件 | `<库>.xbel`，如 `bookmarks.xbel`（库不存在会自动创建） |
 | 用户名 | shelfmark 用户名，如 `alice` |
-| 密码 | `dav` 令牌（网页“设置 → 设备与令牌”生成，不是账户密码） |
+| 密码 | `dav` 令牌（网页“设置 → 设备与令牌”生成） |
 
 - **不要开 Floccus 的加密**（passphrase）：服务端要能读懂 XBEL。
 - 一个 Floccus 账户同步一个库；每台设备一个令牌，丢了单独吊销。
@@ -50,7 +52,7 @@ docker compose exec -T shelfmark shelfmark user add alice --admin --password-std
 - Chrome / Edge / Brave：解压，打开 `chrome://extensions`，开“开发者模式”，“加载已解压的扩展程序”选解压目录。
 - Firefox（≥ 140）：zip 未签名，`about:debugging` → “此 Firefox” → “临时载入附加组件”选 zip；长期使用需自行签名，或用允许未签名扩展的 Developer Edition / ESR。
 
-插件设置页填服务器地址后登录：内网用用户名 + 密码；公网（套了 Cloudflare Access）用“粘贴令牌”，令牌在网页“设置 → 设备与令牌 → 添加插件/脚本令牌”生成（权限选 REST API）。
+插件设置页填服务器地址，粘贴令牌（网页“设置 → 设备与令牌 → 添加插件/脚本令牌”生成，权限选 REST API）。内网和公网都用这一种方式。
 
 ## 手机：PWA 与分享收藏
 
@@ -68,9 +70,9 @@ docker compose exec -T shelfmark shelfmark user add alice --admin --password-std
 公网走 Cloudflare Tunnel + Access 时：
 
 - Access 应用对这些路径设 **Bypass**，由 shelfmark 自己认证：`/dav/`、`/api/`、`/manifest.webmanifest`、`/icons/`。其余（网页页面、静态资源、`/downloads/`）放在 Access 后面。
-- 设 `SHELFMARK_CF_ACCESS_TEAM_DOMAIN` 和 `SHELFMARK_CF_ACCESS_AUD` 后，经 Cloudflare 来的密码类请求（首次设置、登录、换令牌、改密码）必须带有效的 Access JWT。网页是过了 Access 才打开的，Cookie 里带着，正常登录；插件和脚本在公网只能用令牌。
+- 设 `SHELFMARK_CF_ACCESS_TEAM_DOMAIN` 和 `SHELFMARK_CF_ACCESS_AUD` 后，凡是带 `Cf-Ray` 头的请求（即经过 Cloudflare）都必须带有效的 Access JWT，否则 403。网页是过了 Access 才打开的，同域 Cookie 里有 `CF_Authorization`，直接就是对应身份；插件和脚本在公网只能用令牌。
+- 身份映射：`SHELFMARK_CF_ACCESS_USERS=alice=alice@example.com` 把 Access 邮箱对到用户；没有映射时（单用户实例）落到默认用户。
 - 插件不需要 Access 服务令牌。插件设置里的服务令牌（Client ID / Secret）是可选项，只在把 `/api/` 也放在 Access 后面的部署里才用：给该服务令牌加一条 Service Auth 策略。
-- 可选单点登录：`SHELFMARK_CF_ACCESS_USERS=alice=alice@example.com`，过了 Access 的网页直接登录，不用再输密码。
 - 其它统一登录网关同理：`/dav/` 必须放行；`/api/` 不放行时，插件要能带上网关认可的凭据。
 
 ## 配置项
@@ -86,8 +88,8 @@ docker compose exec -T shelfmark shelfmark user add alice --admin --password-std
 | `SHELFMARK_TRUSTED_PROXIES` | 空 | 可信反代 CIDR，逗号分隔 |
 | `SHELFMARK_CF_ACCESS_TEAM_DOMAIN` | 空 | Access 团队域，如 `example.cloudflareaccess.com`；空则不启用 Access 相关逻辑 |
 | `SHELFMARK_CF_ACCESS_AUD` | 空 | Access 应用 AUD，逗号分隔可多个 |
-| `SHELFMARK_CF_ACCESS_USERS` | 空 | 单点登录映射 `用户名=邮箱`，逗号分隔 |
-| `SHELFMARK_ADMIN_USER` / `SHELFMARK_ADMIN_PASSWORD` | 空 | 没有用户时建管理员 |
+| `SHELFMARK_CF_ACCESS_USERS` | 空 | Access 邮箱到用户的映射 `用户名=邮箱`，逗号分隔 |
+| `SHELFMARK_DEFAULT_USER` | 空 | 内网请求用的用户，空则取最早创建的用户；首次启动没有用户时用它建管理员（默认 `admin`） |
 | `SHELFMARK_DAV_AUTO_CREATE` | `true` | Floccus 上传到不存在的库文件时自动建库 |
 | `SHELFMARK_GUARD_RATIO` / `SHELFMARK_GUARD_MIN_ITEMS` | `0.5` / `20` | 防误删阈值，比例为 0 关闭 |
 | `SHELFMARK_REVISION_KEEP_DAYS` / `SHELFMARK_REVISION_KEEP_DAILY_DAYS` | `30` / `365` | 修订全保留天数 / 每日保留一份的天数 |

@@ -5,12 +5,11 @@ info:
   description: |
     shelfmark 的 REST 接口契约。服务端、网页、插件都以此为准。
     WebDAV（/dav/，供 Floccus 同步）不在本文件内，见 docs/design.md 第 4 节。
-    认证：网页用 Cookie 会话（写请求必须带 `X-Requested-With: shelfmark`），插件和脚本用 Bearer 令牌（scope 含 api）。
+    认证：身份由请求来源决定 —— 经 Cloudflare 的请求必须是有效的 Access 身份，内网请求直接使用默认用户；插件和脚本用 Bearer 令牌（scope 含 api）。网页写请求必须带 `X-Requested-With: shelfmark`。
     时间均为 UTC RFC3339。条目 ID 在库内唯一，0 表示根。
 servers:
   - url: /
 security:
-  - cookieAuth: []
   - bearerAuth: []
 
 tags:
@@ -52,67 +51,6 @@ paths:
             application/json:
               schema: { $ref: '#/components/schemas/SystemInfo' }
 
-  /api/v1/setup:
-    post:
-      tags: [auth]
-      operationId: setupAdmin
-      summary: 首次设置管理员，仅在没有任何用户时可用，成功后直接登录
-      security: []
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema: { $ref: '#/components/schemas/Credentials' }
-      responses:
-        '201':
-          description: 已创建并登录（Set-Cookie）
-          content:
-            application/json:
-              schema: { $ref: '#/components/schemas/Me' }
-        '409': { $ref: '#/components/responses/Conflict' }
-        '422': { $ref: '#/components/responses/Validation' }
-
-  /api/v1/auth/login:
-    post:
-      tags: [auth]
-      operationId: login
-      security: []
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema: { $ref: '#/components/schemas/Credentials' }
-      responses:
-        '200':
-          description: 登录成功（Set-Cookie）
-          content:
-            application/json:
-              schema: { $ref: '#/components/schemas/Me' }
-        '401': { $ref: '#/components/responses/Unauthorized' }
-        '429': { $ref: '#/components/responses/RateLimited' }
-
-  /api/v1/auth/access:
-    post:
-      tags: [auth]
-      operationId: loginWithAccess
-      summary: 用 Cloudflare Access 身份换会话（单点登录）。需要有效的 Access JWT 且邮箱在 SHELFMARK_CF_ACCESS_USERS 里有映射
-      security: []
-      responses:
-        '200':
-          description: 已登录（Set-Cookie）
-          content:
-            application/json:
-              schema: { $ref: '#/components/schemas/Me' }
-        '401': { $ref: '#/components/responses/Unauthorized' }
-        '503': { $ref: '#/components/responses/Unavailable' }
-
-  /api/v1/auth/logout:
-    post:
-      tags: [auth]
-      operationId: logout
-      responses:
-        '204': { description: 已退出 }
-
   /api/v1/auth/me:
     get:
       tags: [auth]
@@ -124,55 +62,6 @@ paths:
             application/json:
               schema: { $ref: '#/components/schemas/Me' }
         '401': { $ref: '#/components/responses/Unauthorized' }
-
-  /api/v1/auth/password:
-    post:
-      tags: [auth]
-      operationId: changePassword
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              type: object
-              required: [currentPassword, newPassword]
-              properties:
-                currentPassword: { type: string }
-                newPassword: { type: string, minLength: 8 }
-      responses:
-        '204': { description: 已修改（其它会话失效） }
-        '401': { $ref: '#/components/responses/Unauthorized' }
-        '422': { $ref: '#/components/responses/Validation' }
-
-  /api/v1/auth/token:
-    post:
-      tags: [auth]
-      operationId: createTokenWithPassword
-      summary: 用用户名密码换一个令牌（插件登录用），无需会话
-      security: []
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              type: object
-              required: [username, password, name, scopes]
-              properties:
-                username: { type: string }
-                password: { type: string }
-                name: { type: string, maxLength: 100 }
-                scopes:
-                  type: array
-                  items: { $ref: '#/components/schemas/Scope' }
-                  minItems: 1
-      responses:
-        '201':
-          description: 令牌（明文只返回这一次）
-          content:
-            application/json:
-              schema: { $ref: '#/components/schemas/TokenCreated' }
-        '401': { $ref: '#/components/responses/Unauthorized' }
-        '429': { $ref: '#/components/responses/RateLimited' }
 
   /api/v1/users:
     get:
@@ -198,10 +87,9 @@ paths:
           application/json:
             schema:
               type: object
-              required: [username, password]
+              required: [username]
               properties:
                 username: { $ref: '#/components/schemas/Username' }
-                password: { type: string, minLength: 8 }
                 isAdmin: { type: boolean, default: false }
       responses:
         '201':
@@ -219,7 +107,7 @@ paths:
     patch:
       tags: [users]
       operationId: updateUser
-      summary: 仅管理员；重置密码或调整管理员身份
+      summary: 仅管理员；调整管理员身份
       requestBody:
         required: true
         content:
@@ -227,7 +115,6 @@ paths:
             schema:
               type: object
               properties:
-                password: { type: string, minLength: 8 }
                 isAdmin: { type: boolean }
       responses:
         '200':
@@ -1133,11 +1020,6 @@ paths:
 
 components:
   securitySchemes:
-    cookieAuth:
-      type: apiKey
-      in: cookie
-      name: shelfmark_session
-      description: 写请求还必须带请求头 X-Requested-With 为 shelfmark
     bearerAuth:
       type: http
       scheme: bearer
@@ -1274,32 +1156,24 @@ components:
       type: string
       format: date-time
 
-    Credentials:
-      type: object
-      required: [username, password]
-      properties:
-        username: { $ref: '#/components/schemas/Username' }
-        password: { type: string }
-
     SystemInfo:
       type: object
-      required: [version, commit, needsSetup, davPath, features]
+      required: [version, commit, davPath, features]
       properties:
         version: { type: string }
         commit: { type: string }
-        needsSetup: { type: boolean, description: 没有任何用户时为 true }
         davPath: { type: string, example: /dav/ }
         baseUrl: { type: [string, 'null'] }
         features:
           type: object
-          required: [ai, metrics, linkcheck, metadata, autoCreateLibrary, cfAccessSso]
+          required: [ai, metrics, linkcheck, metadata, autoCreateLibrary, cfAccess]
           properties:
             ai: { type: boolean }
             metrics: { type: boolean }
             linkcheck: { type: boolean }
             metadata: { type: boolean }
             autoCreateLibrary: { type: boolean }
-            cfAccessSso: { type: boolean, description: 已配置 Access 单点登录映射 }
+            cfAccess: { type: boolean, description: 已配置 Cloudflare Access（经 Cloudflare 的请求会校验 Access JWT） }
 
     User:
       type: object
@@ -1315,7 +1189,8 @@ components:
       required: [user, authMethod]
       properties:
         user: { $ref: '#/components/schemas/User' }
-        authMethod: { type: string, enum: [session, token, access] }
+        authMethod: { type: string, enum: [token, access, lan] }
+        email: { type: string, description: 经 Cloudflare Access 时的登录邮箱 }
 
     Scope:
       type: string

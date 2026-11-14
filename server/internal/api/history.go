@@ -238,21 +238,12 @@ func (a *API) discardPending(w http.ResponseWriter, r *http.Request, p *auth.Pri
 func (a *API) Register(mux *http.ServeMux) {
 	h := func(pattern string, fn authedFunc) { mux.HandleFunc(pattern, a.authed(fn)) }
 	pub := func(pattern string, fn func(http.ResponseWriter, *http.Request) error) {
-		mux.HandleFunc(pattern, a.public(false, fn))
-	}
-	session := func(pattern string, fn func(http.ResponseWriter, *http.Request) error) {
-		mux.HandleFunc(pattern, a.public(true, fn))
+		mux.HandleFunc(pattern, a.public(fn))
 	}
 
 	pub("GET /api/v1/system/info", a.systemInfo)
-	session("POST /api/v1/setup", a.setup)
-	session("POST /api/v1/auth/login", a.login)
-	session("POST /api/v1/auth/access", a.loginWithAccess)
-	pub("POST /api/v1/auth/token", a.tokenWithPassword)
 	pub("GET /api/v1/favicons/{faviconId}", a.favicon)
-	h("POST /api/v1/auth/logout", a.logout)
 	h("GET /api/v1/auth/me", a.me)
-	h("POST /api/v1/auth/password", a.changePassword)
 
 	h("GET /api/v1/users", a.listUsers)
 	h("POST /api/v1/users", a.createUser)
