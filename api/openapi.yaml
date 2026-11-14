@@ -417,6 +417,7 @@ paths:
     get:
       tags: [items]
       operationId: getTree
+      description: ETag 形如 "r<revision>-<变更序号>"，每次内容变化都会变（合并进上一修订的连续编辑也会变）；If-None-Match 按完整 ETag 比较
       parameters:
         - name: If-None-Match
           in: header
@@ -521,6 +522,41 @@ paths:
         '422': { $ref: '#/components/responses/Validation' }
         '423': { $ref: '#/components/responses/Locked' }
 
+  /api/v1/libraries/{slug}/items/{itemId}/transfer:
+    parameters:
+      - $ref: '#/components/parameters/LibrarySlug'
+      - $ref: '#/components/parameters/ItemId'
+    post:
+      tags: [items]
+      operationId: transferItem
+      summary: 把条目（文件夹连同子孙）移到另一个库；目标库分配新 ID，备注、标签、访问次数、图标、检测结果都保留；两个库各生成一个修订
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [library, parentId]
+              properties:
+                library: { $ref: '#/components/schemas/Slug' }
+                parentId: { type: integer, format: int64, description: 目标库里的父文件夹，0 为根 }
+                position: { type: integer, minimum: 0, description: 不传则追加到末尾 }
+      responses:
+        '200':
+          description: 已移动
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [revision, sourceRevision, item]
+                properties:
+                  revision: { type: integer, format: int64, description: 目标库的修订号 }
+                  sourceRevision: { type: integer, format: int64, description: 源库的修订号 }
+                  item: { $ref: '#/components/schemas/Item' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '422': { $ref: '#/components/responses/Validation' }
+        '423': { $ref: '#/components/responses/Locked' }
+
   /api/v1/libraries/{slug}/recent:
     parameters:
       - $ref: '#/components/parameters/LibrarySlug'
@@ -555,11 +591,43 @@ paths:
                 type: array
                 items: { $ref: '#/components/schemas/ItemWithPath' }
 
+  /api/v1/recent:
+    get:
+      tags: [discovery]
+      operationId: listRecentAll
+      summary: 当前用户所有库里最近添加的书签
+      parameters:
+        - { name: limit, in: query, schema: { type: integer, minimum: 1, maximum: 100, default: 20 } }
+      responses:
+        '200':
+          description: 最近添加的书签
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/ItemWithPath' }
+
+  /api/v1/frequent:
+    get:
+      tags: [discovery]
+      operationId: listFrequentAll
+      summary: 当前用户所有库里访问最多的书签
+      parameters:
+        - { name: limit, in: query, schema: { type: integer, minimum: 1, maximum: 100, default: 20 } }
+      responses:
+        '200':
+          description: 访问最多的书签
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/ItemWithPath' }
+
   /api/v1/quick-save:
     post:
       tags: [items]
       operationId: quickSave
-      summary: 快速收藏（插件、分享、书签小工具用）。不指定位置时用设置里的默认收藏位置，未设置则存到库 bookmarks 根下的“收件箱”文件夹（不存在则创建）。
+      summary: 快速收藏（插件、分享、书签小工具用）。不指定位置时用设置里的默认收藏位置，未设置则存到库 bookmarks 根下的“收件箱”文件夹（不存在则创建）；传了 library 没传 parentId 时存到该库根下的“收件箱”文件夹（不存在则创建）。
       requestBody:
         required: true
         content:
@@ -567,7 +635,7 @@ paths:
             schema: { $ref: '#/components/schemas/QuickSaveRequest' }
       responses:
         '200':
-          description: 该 URL 已存在（existed=true），未重复创建
+          description: 该 URL 已存在（existed=true），未重复创建，也不修改已有书签（请求里的标题、标签、备注、位置都被忽略）
           content:
             application/json:
               schema: { $ref: '#/components/schemas/QuickSaveResult' }
@@ -1284,8 +1352,13 @@ components:
         username: { type: string }
         bookmarkFile: { type: string, example: bookmarks.xbel }
         profile:
-          description: 可直接导入 Floccus 的配置 JSON（格式按 Floccus 源码）；服务端无法保证格式时为 null
-          oneOf: [{ type: object, additionalProperties: true }, { type: 'null' }]
+          description: |
+            可直接导入 Floccus 的配置 JSON（格式按 Floccus 源码）；服务端无法保证格式时为 null。
+            Floccus「导入配置」读取的是账号数组（Account.export 的输出），所以服务端返回数组，原样 JSON.stringify 后存为 profileFileName 即可导入。
+          oneOf:
+            - { type: array, items: { type: object, additionalProperties: true } }
+            - { type: object, additionalProperties: true }
+            - { type: 'null' }
         profileFileName: { type: [string, 'null'] }
 
     LockInfo:
@@ -1401,7 +1474,7 @@ components:
 
     UpdateItemRequest:
       type: object
-      description: 只改传入的字段。parentId/position 同时或单独传表示移动
+      description: 只改传入的字段。parentId/position 同时或单独传表示移动；position 是移除自身后在目标文件夹里的最终下标（同一文件夹内移动也一样），超出则放末尾
       properties:
         title: { type: string, maxLength: 2000 }
         url: { type: string, maxLength: 8192 }
@@ -1480,7 +1553,7 @@ components:
         id: { type: integer, format: int64 }
         parentId: { type: integer, format: int64 }
         parentRef: { type: string }
-        position: { type: integer, minimum: 0, description: 不传则追加到末尾 }
+        position: { type: integer, minimum: 0, description: 移除自身后在目标文件夹里的最终下标；不传则追加到末尾 }
 
     BatchDelete:
       type: object
