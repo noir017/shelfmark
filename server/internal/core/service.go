@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"sort"
 	"sync"
 	"time"
 
@@ -164,27 +165,65 @@ func (s *Service) FloccusLock(ctx context.Context, q store.Q, userID int64, slug
 	return info, nil
 }
 
+// LibKey names a library for locking.
+type LibKey struct {
+	UserID int64
+	Slug   string
+}
+
 // acquire takes the library mutex; unless skipFloccus it waits (without
 // holding the mutex) up to LockWait for a fresh Floccus lock to go away.
 func (s *Service) acquire(ctx context.Context, userID int64, slug string, skipFloccus bool) (func(), error) {
-	m := s.mutex(userID, slug)
+	return s.acquireMany(ctx, []LibKey{{userID, slug}}, skipFloccus)
+}
+
+// acquireMany locks several libraries (in a fixed order, so concurrent calls
+// cannot deadlock) once none of them has a fresh Floccus lock.
+func (s *Service) acquireMany(ctx context.Context, keys []LibKey, skipFloccus bool) (func(), error) {
+	sort.Slice(keys, func(i, j int) bool {
+		if keys[i].UserID != keys[j].UserID {
+			return keys[i].UserID < keys[j].UserID
+		}
+		return keys[i].Slug < keys[j].Slug
+	})
+	var ms []*sync.Mutex
+	for i, k := range keys {
+		if i > 0 && k == keys[i-1] {
+			continue
+		}
+		ms = append(ms, s.mutex(k.UserID, k.Slug))
+	}
+	unlockAll := func() {
+		for i := len(ms) - 1; i >= 0; i-- {
+			ms[i].Unlock()
+		}
+	}
 	deadline := time.Now().Add(s.LockWait)
 	for {
-		m.Lock()
+		for _, m := range ms {
+			m.Lock()
+		}
 		if skipFloccus {
-			return m.Unlock, nil
+			return unlockAll, nil
 		}
-		info, err := s.FloccusLock(ctx, s.DB, userID, slug)
-		if err != nil {
-			m.Unlock()
-			return nil, err
+		var held *LockInfo
+		for _, k := range keys {
+			info, err := s.FloccusLock(ctx, s.DB, k.UserID, k.Slug)
+			if err != nil {
+				unlockAll()
+				return nil, err
+			}
+			if info != nil && info.Fresh {
+				held = info
+				break
+			}
 		}
-		if info == nil || !info.Fresh {
-			return m.Unlock, nil
+		if held == nil {
+			return unlockAll, nil
 		}
-		m.Unlock()
+		unlockAll()
 		if !time.Now().Before(deadline) {
-			return nil, &LockedError{Actor: info.Actor, Since: info.Since, Modified: info.ModifiedAt}
+			return nil, &LockedError{Actor: held.Actor, Since: held.Since, Modified: held.ModifiedAt}
 		}
 		select {
 		case <-ctx.Done():
@@ -212,6 +251,8 @@ type WriteOpts struct {
 	NoMerge         bool
 	SyncActor       bool
 	MigrateMeta     bool
+	// SkipHooks suppresses metadata fetching for added bookmarks.
+	SkipHooks bool
 	// Guard may return a pending upload instead of applying the change.
 	Guard func(w *WriteCtx, d *tree.Diff) *store.Pending
 }
@@ -242,11 +283,28 @@ func (s *Service) Write(ctx context.Context, lib *store.Library, actor Actor, op
 }
 
 func (s *Service) writeLocked(ctx context.Context, lib *store.Library, actor Actor, opts WriteOpts, fn func(w *WriteCtx) error) (*WriteResult, error) {
+	var res *WriteResult
+	var after func()
+	err := s.DB.Tx(ctx, func(tx *sql.Tx) error {
+		var err error
+		res, after, err = s.WriteTx(ctx, tx, lib, actor, opts, fn)
+		return err
+	})
+	if err != nil {
+		return nil, err
+	}
+	after()
+	return res, nil
+}
+
+// WriteTx performs a library write inside tx; the caller must hold the
+// library mutex and call after() once tx has committed.
+func (s *Service) WriteTx(ctx context.Context, tx *sql.Tx, lib *store.Library, actor Actor, opts WriteOpts, fn func(w *WriteCtx) error) (*WriteResult, func(), error) {
 	res := &WriteResult{}
 	var fill map[int64]bool
 	var added []int64
 	now := s.Now()
-	err := s.DB.Tx(ctx, func(tx *sql.Tx) error {
+	err := func() error {
 		cur, err := store.GetLibraryByID(ctx, tx, lib.ID)
 		if err != nil {
 			if errors.Is(err, store.ErrNotFound) {
@@ -273,6 +331,7 @@ func (s *Service) writeLocked(ctx context.Context, lib *store.Library, actor Act
 			if p := opts.Guard(w, diff); p != nil {
 				p.LibraryID = cur.ID
 				p.BaseRevision = cur.Revision
+				p.BaseVersion = cur.Version
 				p.CreatedAt = now
 				id, err := store.UpsertPending(ctx, tx, p)
 				if err != nil {
@@ -302,8 +361,12 @@ func (s *Service) writeLocked(ctx context.Context, lib *store.Library, actor Act
 		default:
 			changed = true
 			counts := diff.Counts()
+			bookmarks, _ := nw.Counts()
+			r := &store.Revision{LibraryID: cur.ID, Rev: cur.Revision + 1, CreatedAt: now, Source: actor.Source, Actor: actor.Name,
+				TotalBookmarks: bookmarks, Snapshot: tree.Gzip(raw), SnapshotHash: hash}
 			if !opts.NoMerge && latest != nil && mergeable(actor.Source) && latest.Rev == cur.Revision &&
 				latest.Source == actor.Source && latest.Actor == actor.Name && now.Sub(latest.CreatedAt) < MergeWindow {
+				// merge: overwrite the latest revision, keeping its number
 				base := tree.New()
 				prev, err := store.PrevRevision(ctx, tx, cur.ID, latest.Rev, true)
 				if err == nil {
@@ -316,20 +379,21 @@ func (s *Service) writeLocked(ctx context.Context, lib *store.Library, actor Act
 					return err
 				}
 				counts = tree.Compare(base, nw).Counts()
-				if err := store.DeleteRevision(ctx, tx, cur.ID, latest.Rev); err != nil {
+				r.Rev = latest.Rev
+				r.Added, r.Removed, r.Changed, r.Moved = counts.Added, counts.Removed, counts.Changed, counts.Moved
+				if err := store.ReplaceRevision(ctx, tx, r); err != nil {
+					return err
+				}
+			} else {
+				r.Added, r.Removed, r.Changed, r.Moved = counts.Added, counts.Removed, counts.Changed, counts.Moved
+				if err := store.InsertRevision(ctx, tx, r); err != nil {
 					return err
 				}
 			}
-			bookmarks, _ := nw.Counts()
-			rev = cur.Revision + 1
-			if err := store.InsertRevision(ctx, tx, &store.Revision{LibraryID: cur.ID, Rev: rev, CreatedAt: now, Source: actor.Source, Actor: actor.Name,
-				Added: counts.Added, Removed: counts.Removed, Changed: counts.Changed, Moved: counts.Moved, TotalBookmarks: bookmarks,
-				Snapshot: tree.Gzip(raw), SnapshotHash: hash}); err != nil {
-				return err
-			}
+			rev = r.Rev
 		}
 		if changed || highest != cur.HighestID {
-			if err := store.SetLibraryState(ctx, tx, cur.ID, rev, highest, now); err != nil {
+			if err := store.SetLibraryState(ctx, tx, cur.ID, rev, cur.Version+1, highest, now); err != nil {
 				return err
 			}
 		}
@@ -347,14 +411,16 @@ func (s *Service) writeLocked(ctx context.Context, lib *store.Library, actor Act
 		res.Revision, res.Changed, res.Tree = rev, changed, nw
 		res.Library, err = store.GetLibraryByID(ctx, tx, cur.ID)
 		return err
-	})
+	}()
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
-	if len(added) > 0 && s.Hooks.NewBookmarks != nil && res.PendingID == 0 {
-		s.Hooks.NewBookmarks(lib.UserID, lib.ID, added, fill)
+	after := func() {
+		if len(added) > 0 && s.Hooks.NewBookmarks != nil && res.PendingID == 0 && !opts.SkipHooks {
+			s.Hooks.NewBookmarks(lib.UserID, lib.ID, added, fill)
+		}
 	}
-	return res, nil
+	return res, after, nil
 }
 
 // migrateMeta pairs removed bookmarks with added ones of the same normalized

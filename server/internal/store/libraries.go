@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"fmt"
 	"time"
 )
 
@@ -14,19 +15,20 @@ type Library struct {
 	Name          string
 	HighestID     int64
 	Revision      int64
+	Version       int64 // bumps on every content change, also when a revision is merged
 	CreatedAt     time.Time
 	UpdatedAt     time.Time
 	LastSyncAt    *time.Time
 	LastSyncActor *string
 }
 
-const libCols = `id, user_id, slug, name, highest_id, revision, created_at, updated_at, last_sync_at, last_sync_actor`
+const libCols = `id, user_id, slug, name, highest_id, revision, version, created_at, updated_at, last_sync_at, last_sync_actor`
 
 func scanLibrary(row interface{ Scan(...any) error }) (*Library, error) {
 	var l Library
 	var created, updated string
 	var syncAt, syncActor sql.NullString
-	if err := row.Scan(&l.ID, &l.UserID, &l.Slug, &l.Name, &l.HighestID, &l.Revision, &created, &updated, &syncAt, &syncActor); err != nil {
+	if err := row.Scan(&l.ID, &l.UserID, &l.Slug, &l.Name, &l.HighestID, &l.Revision, &l.Version, &created, &updated, &syncAt, &syncActor); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return nil, ErrNotFound
 		}
@@ -91,11 +93,14 @@ func UpdateLibraryMeta(ctx context.Context, q Q, id int64, slug, name string, no
 	return err
 }
 
-// SetLibraryState stores revision/highest id after a write.
-func SetLibraryState(ctx context.Context, q Q, id, revision, highestID int64, now time.Time) error {
-	_, err := q.ExecContext(ctx, `UPDATE libraries SET revision = ?, highest_id = ?, updated_at = ? WHERE id = ?`, revision, highestID, TS(now), id)
+// SetLibraryState stores revision/version/highest id after a write.
+func SetLibraryState(ctx context.Context, q Q, id, revision, version, highestID int64, now time.Time) error {
+	_, err := q.ExecContext(ctx, `UPDATE libraries SET revision = ?, version = ?, highest_id = ?, updated_at = ? WHERE id = ?`, revision, version, highestID, TS(now), id)
 	return err
 }
+
+// ETag is the validator of a library's content.
+func (l *Library) ETag() string { return fmt.Sprintf(`"r%d-%d"`, l.Revision, l.Version) }
 
 func SetLibrarySync(ctx context.Context, q Q, id int64, actor string, now time.Time) error {
 	_, err := q.ExecContext(ctx, `UPDATE libraries SET last_sync_at = ?, last_sync_actor = ? WHERE id = ?`, TS(now), actor, id)
@@ -317,6 +322,13 @@ func InsertRevision(ctx context.Context, q Q, r *Revision) error {
 	return err
 }
 
+// ReplaceRevision overwrites a revision in place (merging consecutive edits).
+func ReplaceRevision(ctx context.Context, q Q, r *Revision) error {
+	_, err := q.ExecContext(ctx, `UPDATE revisions SET created_at = ?, added = ?, removed = ?, changed = ?, moved = ?, total_bookmarks = ?, snapshot = ?, snapshot_hash = ?
+		WHERE library_id = ? AND rev = ?`, TS(r.CreatedAt), r.Added, r.Removed, r.Changed, r.Moved, r.TotalBookmarks, r.Snapshot, r.SnapshotHash, r.LibraryID, r.Rev)
+	return err
+}
+
 func DeleteRevision(ctx context.Context, q Q, libID, rev int64) error {
 	_, err := q.ExecContext(ctx, `DELETE FROM revisions WHERE library_id = ? AND rev = ?`, libID, rev)
 	return err
@@ -394,6 +406,7 @@ type Pending struct {
 	Actor        string
 	TokenID      *int64
 	BaseRevision int64
+	BaseVersion  int64
 	XBEL         []byte // gzip
 	Added        int
 	Removed      int
@@ -403,13 +416,13 @@ type Pending struct {
 	Reason       string
 }
 
-const pendingCols = `p.id, p.library_id, l.slug, p.created_at, p.actor, p.token_id, p.base_revision, p.added, p.removed, p.changed, p.moved, p.total_before, p.reason`
+const pendingCols = `p.id, p.library_id, l.slug, p.created_at, p.actor, p.token_id, p.base_revision, p.base_version, p.added, p.removed, p.changed, p.moved, p.total_before, p.reason`
 
 func scanPending(row interface{ Scan(...any) error }, withData bool) (*Pending, error) {
 	var p Pending
 	var created string
 	var tok sql.NullInt64
-	dest := []any{&p.ID, &p.LibraryID, &p.LibrarySlug, &created, &p.Actor, &tok, &p.BaseRevision, &p.Added, &p.Removed, &p.Changed, &p.Moved, &p.TotalBefore, &p.Reason}
+	dest := []any{&p.ID, &p.LibraryID, &p.LibrarySlug, &created, &p.Actor, &tok, &p.BaseRevision, &p.BaseVersion, &p.Added, &p.Removed, &p.Changed, &p.Moved, &p.TotalBefore, &p.Reason}
 	if withData {
 		dest = append(dest, &p.XBEL)
 	}
@@ -435,9 +448,9 @@ func UpsertPending(ctx context.Context, q Q, p *Pending) (int64, error) {
 	if p.TokenID != nil {
 		tok = *p.TokenID
 	}
-	res, err := q.ExecContext(ctx, `INSERT INTO pending_uploads(library_id, created_at, actor, token_id, base_revision, xbel, added, removed, changed, moved, total_before, reason)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-		p.LibraryID, TS(p.CreatedAt), p.Actor, tok, p.BaseRevision, p.XBEL, p.Added, p.Removed, p.Changed, p.Moved, p.TotalBefore, p.Reason)
+	res, err := q.ExecContext(ctx, `INSERT INTO pending_uploads(library_id, created_at, actor, token_id, base_revision, base_version, xbel, added, removed, changed, moved, total_before, reason)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		p.LibraryID, TS(p.CreatedAt), p.Actor, tok, p.BaseRevision, p.BaseVersion, p.XBEL, p.Added, p.Removed, p.Changed, p.Moved, p.TotalBefore, p.Reason)
 	if err != nil {
 		return 0, err
 	}

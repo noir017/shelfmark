@@ -28,16 +28,15 @@ func normalize(u string) string { return urlnorm.Normalize(u) }
 // ---- XBEL generation with per-revision cache ----
 
 type xbelEntry struct {
-	rev     int64
-	libRev  int64
-	data    []byte
-	modTime time.Time
+	version int64
+	file    *XBELFile
 }
 
 // XBELFile is a generated library file.
 type XBELFile struct {
 	Data     []byte
 	Revision int64
+	ETag     string
 	ModTime  time.Time
 }
 
@@ -68,8 +67,8 @@ func (s *Service) XBEL(ctx context.Context, lib *store.Library) (*XBELFile, erro
 	s.mu.Lock()
 	e := s.xbel[lib.ID]
 	s.mu.Unlock()
-	if e != nil && e.rev == cur.Revision && e.libRev == cur.HighestID {
-		return &XBELFile{Data: e.data, Revision: e.rev, ModTime: e.modTime}, nil
+	if e != nil && e.version == cur.Version {
+		return e.file, nil
 	}
 	var out *XBELFile
 	err = s.DB.ReadTx(ctx, func(tx *sql.Tx) error {
@@ -85,9 +84,9 @@ func (s *Service) XBEL(ctx context.Context, lib *store.Library) (*XBELFile, erro
 		if r, err := store.LatestRevision(ctx, tx, l.ID); err == nil {
 			mod = r.CreatedAt
 		}
-		out = &XBELFile{Data: xbel.Write(TreeToXBEL(t), max(l.HighestID, t.HighestID)), Revision: l.Revision, ModTime: mod}
+		out = &XBELFile{Data: xbel.Write(TreeToXBEL(t), max(l.HighestID, t.HighestID)), Revision: l.Revision, ETag: l.ETag(), ModTime: mod}
 		s.mu.Lock()
-		s.xbel[lib.ID] = &xbelEntry{rev: l.Revision, libRev: l.HighestID, data: out.Data, modTime: mod}
+		s.xbel[lib.ID] = &xbelEntry{version: l.Version, file: out}
 		s.mu.Unlock()
 		return nil
 	})
@@ -295,7 +294,7 @@ func (s *Service) ApprovePending(ctx context.Context, lib *store.Library, id int
 	if err != nil {
 		return nil, err
 	}
-	if cur.Revision != p.BaseRevision {
+	if cur.Version != p.BaseVersion {
 		return nil, &ConflictError{Msg: "拦截之后库已有新的修改，请在该设备上重新同步后再处理"}
 	}
 	data, err := gunzip(p.XBEL)

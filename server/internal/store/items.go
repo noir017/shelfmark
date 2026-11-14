@@ -502,3 +502,22 @@ func SetFaviconHost(ctx context.Context, q Q, host, faviconID string, failed boo
 		ON CONFLICT(host) DO UPDATE SET favicon_id = excluded.favicon_id, fetched_at = excluded.fetched_at, failed_at = NULL`, host, faviconID, TS(now))
 	return err
 }
+
+// CopyMeta writes non-tree metadata (icon, visits, health) onto an item.
+func CopyMeta(ctx context.Context, q Q, libID, itemID int64, m *Meta) error {
+	var httpStatus any
+	if m.HealthHTTP != nil {
+		httpStatus = *m.HealthHTTP
+	}
+	str := func(p *string) any {
+		if p == nil {
+			return nil
+		}
+		return *p
+	}
+	_, err := q.ExecContext(ctx, `UPDATE item_meta SET favicon_id = ?, visit_count = ?, last_visited_at = ?, health_status = ?, health_http_status = ?,
+		health_final_url = ?, health_checked_at = ?, health_error = ?, meta_fetched_at = ? WHERE library_id = ? AND item_id = ?`,
+		str(m.FaviconID), m.VisitCount, nullTS(m.LastVisitedAt), str(m.HealthStatus), httpStatus, str(m.HealthFinalURL),
+		nullTS(m.HealthCheckedAt), str(m.HealthError), nullTS(m.MetaFetchedAt), libID, itemID)
+	return err
+}

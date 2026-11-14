@@ -118,13 +118,13 @@ func likeArg(s string) string {
 const likeAny = `(f.title LIKE ? ESCAPE '\' OR f.url LIKE ? ESCAPE '\' OR f.notes LIKE ? ESCAPE '\' OR f.tags LIKE ? ESCAPE '\' OR f.path LIKE ? ESCAPE '\')`
 
 type candidate struct {
-	libID, itemID       int64
-	slug                string
-	title, url, notes   string
-	tags, path          string
-	bm25                float64
-	visits              int
-	health, normalized  string
+	libID, itemID      int64
+	slug               string
+	title, url, notes  string
+	tags, path         string
+	bm25               float64
+	visits             int
+	health, normalized string
 }
 
 // Run executes a query for a user; library restricts to one slug ("" = all).
