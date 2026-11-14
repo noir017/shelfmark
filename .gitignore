@@ -1,0 +1,15 @@
+.worktrees/
+node_modules/
+dist/
+/data/
+*.db
+*.db-wal
+*.db-shm
+.env
+/server/shelfmark
+/server/bin/
+/e2e/test-results/
+/e2e/playwright-report/
+/e2e/.cache/
+coverage/
+.DS_Store
