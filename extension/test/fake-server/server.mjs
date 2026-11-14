@@ -409,12 +409,40 @@ export async function startFakeServer(options = {}) {
   });
 
   const discovery = (sort, filter) => ({ user, params, query }) => {
-    const l = lib(user, params.slug);
+    const libs = params.slug ? [lib(user, params.slug)] : [...user.libraries.values()];
     const limit = Math.min(Math.max(Number(query.get('limit') ?? 20), 1), 100);
-    return { json: l.bookmarks().filter(filter).sort(sort).slice(0, limit).map((i) => l.withPath(i)) };
+    const all = libs.flatMap((l) => l.bookmarks().filter(filter).map((i) => ({ l, i })));
+    return { json: all.sort((a, b) => sort(a.i, b.i)).slice(0, limit).map(({ l, i }) => l.withPath(i)) };
   };
-  route('GET', '/api/v1/libraries/:slug/recent', discovery((a, b) => b.createdAt.localeCompare(a.createdAt) || b.id - a.id, () => true));
-  route('GET', '/api/v1/libraries/:slug/frequent', discovery((a, b) => b.visitCount - a.visitCount, (i) => i.visitCount > 0));
+  const byCreated = (a, b) => b.createdAt.localeCompare(a.createdAt) || b.id - a.id;
+  const byVisits = (a, b) => b.visitCount - a.visitCount;
+  route('GET', '/api/v1/libraries/:slug/recent', discovery(byCreated, () => true));
+  route('GET', '/api/v1/libraries/:slug/frequent', discovery(byVisits, (i) => i.visitCount > 0));
+  route('GET', '/api/v1/recent', discovery(byCreated, () => true));
+  route('GET', '/api/v1/frequent', discovery(byVisits, (i) => i.visitCount > 0));
+
+  route('POST', '/api/v1/libraries/:slug/items/:id/transfer', ({ user, params, body }) => {
+    const src = lib(user, params.slug);
+    const it = item(src, params.id);
+    const b = body ?? {};
+    if (typeof b.library !== 'string') throw invalid('library required', { library: 'required' });
+    const dst = lib(user, b.library);
+    const parentId = b.parentId ?? 0;
+    if (!folderExists(dst, parentId)) throw notFound('parent folder not found');
+    checkLock();
+    const copy = (from, toParent, position) => {
+      const { id: _id, parentId: _p, position: _pos, ...rest } = from;
+      const n = dst.add({ ...rest, parentId: toParent, position });
+      Object.assign(n, { createdAt: from.createdAt, health: from.health, visitCount: from.visitCount, lastVisitedAt: from.lastVisitedAt });
+      for (const c of src.children(from.id)) copy(c, n.id);
+      return n;
+    };
+    const moved = copy(it, parentId, b.position);
+    src.remove(it.id);
+    src.bump();
+    dst.bump();
+    return { json: { revision: dst.revision, sourceRevision: src.revision, item: apiItem(moved) } };
+  });
 
   route('POST', '/api/v1/quick-save', ({ user, body }) => {
     const b = body ?? {};

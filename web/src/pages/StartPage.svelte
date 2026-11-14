@@ -40,14 +40,8 @@
     const libs = app.libraries.map((l) => l.slug)
     if (app.online) {
       try {
-        if (sp.showRecent) {
-          const all = await Promise.all(libs.map((slug) => unwrap(client.GET('/api/v1/libraries/{slug}/recent', { params: { path: { slug }, query: { limit: sp.recentCount } } }))))
-          recent = all.flat().sort((a, b) => b.item.createdAt.localeCompare(a.item.createdAt)).slice(0, sp.recentCount)
-        }
-        if (sp.showFrequent) {
-          const all = await Promise.all(libs.map((slug) => unwrap(client.GET('/api/v1/libraries/{slug}/frequent', { params: { path: { slug }, query: { limit: sp.frequentCount } } }))))
-          frequent = all.flat().sort((a, b) => b.item.visitCount - a.item.visitCount).slice(0, sp.frequentCount)
-        }
+        if (sp.showRecent) recent = await unwrap(client.GET('/api/v1/recent', { params: { query: { limit: sp.recentCount } } }))
+        if (sp.showFrequent) frequent = await unwrap(client.GET('/api/v1/frequent', { params: { query: { limit: sp.frequentCount } } }))
         return
       } catch {
         /* 离线：下面用缓存的树算 */

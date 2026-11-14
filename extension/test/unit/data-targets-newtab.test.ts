@@ -1,7 +1,7 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { createApi } from '../../src/api/client';
 import { compactItems, readSnapshot, refreshSnapshot, walkBookmarks, type Snapshot } from '../../src/lib/data';
-import { mergeFrequent, mergeRecent, readDiscovery, refreshDiscovery } from '../../src/lib/discovery';
+import { readDiscovery, refreshDiscovery } from '../../src/lib/discovery';
 import { filterTargets, findTarget, folderTargets, orderTargets, snapshotTargets, targetLabel } from '../../src/lib/targets';
 import type { ItemWithPath } from '../../src/lib/types';
 import { buildGroups, searchLocal } from '../../src/newtab/model';
@@ -192,19 +192,6 @@ describe('new tab model', () => {
 });
 
 describe('discovery (recent / frequent across libraries)', () => {
-  const iwp = (library: string, id: number, createdAt: string, visitCount: number): ItemWithPath => ({
-    library,
-    path: [],
-    item: { id, type: 'bookmark', parentId: 0, position: 0, title: `t${id}`, url: `https://${id}.example.com/`, createdAt, updatedAt: createdAt, tags: [], visitCount },
-  });
-
-  it('merges per-library lists', () => {
-    const a = [iwp('a', 1, '2026-01-03T00:00:00.000Z', 0), iwp('a', 2, '2026-01-01T00:00:00.000Z', 9)];
-    const b = [iwp('b', 3, '2026-01-02T00:00:00.000Z', 4)];
-    expect(mergeRecent([a, b], 2).map((l) => l.id)).toEqual([1, 3]);
-    expect(mergeFrequent([a, b], 5).map((l) => l.id)).toEqual([2, 3]);
-  });
-
   it('fetches only what the start page shows and caches it', async () => {
     const area = new MemoryArea();
     const snap = await refreshSnapshot(api, area);

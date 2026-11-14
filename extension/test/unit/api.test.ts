@@ -207,6 +207,17 @@ describe('data endpoints', () => {
     expect(server.findBookmark('https://edit.example.com/')).toBeNull();
   });
 
+  it('transfers an item to another library', async () => {
+    const { result } = await api().quickSave({ url: 'https://move.example.com/', title: 'Move me', tags: ['x'] });
+    const project = server.folderId('work', '项目')!;
+    const r = await api().transferItem('bookmarks', result.item.id, { library: 'work', parentId: project });
+    expect(r.item).toMatchObject({ title: 'Move me', tags: ['x'], parentId: project });
+    expect(r.sourceRevision).toBeGreaterThan(0);
+    const found = await api().lookup('https://move.example.com/');
+    expect(found.matches.map((m) => m.library)).toEqual(['work']);
+    await api().deleteItem('work', r.item.id);
+  });
+
   it('maps 423 to locked with the syncing device', async () => {
     server.setLocked('laptop-floccus');
     const err = await expectApiError(api().quickSave({ url: 'https://locked.example.com/' }));
@@ -234,9 +245,9 @@ describe('data endpoints', () => {
     expect(res.results.map((r) => r.item.title)).toEqual(['Example Tools']);
     const hit = res.results[0]!;
     await api().recordVisit(hit.library, hit.item.id);
-    const freq = await api().frequent('bookmarks');
+    const freq = await api().frequent();
     expect(freq[0]!.item.id).toBe(hit.item.id);
-    expect((await api().recent('bookmarks', 2)).length).toBe(2);
+    expect((await api().recent(2)).length).toBe(2);
   });
 
   it('returns favicons as blobs and builds the web search URL', async () => {

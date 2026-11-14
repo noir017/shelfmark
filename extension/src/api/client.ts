@@ -17,6 +17,8 @@ import type {
   SettingsPatch,
   SystemInfo,
   TokenCreated,
+  TransferItemRequest,
+  TransferItemResult,
   Tree,
   UpdateItemRequest,
   WriteItemResult,
@@ -237,18 +239,25 @@ export function createApi(cfg: ApiConfig, opts: ApiOptions = {}) {
         client.DELETE('/api/v1/libraries/{slug}/items/{itemId}', { params: { path: { slug, itemId } } }),
       ),
 
+    /** Move an item (with descendants) to another library; the target library assigns a new ID. */
+    transferItem: (slug: string, itemId: number, body: TransferItemRequest): Promise<TransferItemResult> =>
+      data(() =>
+        client.POST('/api/v1/libraries/{slug}/items/{itemId}/transfer', {
+          params: { path: { slug, itemId } },
+          body,
+        }),
+      ),
+
     search: (q: string, limit = 10): Promise<SearchResult> =>
       data(() => client.GET('/api/v1/search', { params: { query: { q, limit } } })),
 
-    recent: (slug: string, limit = 20): Promise<ItemWithPath[]> =>
-      data(() =>
-        client.GET('/api/v1/libraries/{slug}/recent', { params: { path: { slug }, query: { limit } } }),
-      ),
+    /** Most recently added bookmarks across all libraries. */
+    recent: (limit = 20): Promise<ItemWithPath[]> =>
+      data(() => client.GET('/api/v1/recent', { params: { query: { limit } } })),
 
-    frequent: (slug: string, limit = 20): Promise<ItemWithPath[]> =>
-      data(() =>
-        client.GET('/api/v1/libraries/{slug}/frequent', { params: { path: { slug }, query: { limit } } }),
-      ),
+    /** Most visited bookmarks across all libraries. */
+    frequent: (limit = 20): Promise<ItemWithPath[]> =>
+      data(() => client.GET('/api/v1/frequent', { params: { query: { limit } } })),
 
     recordVisit: async (library: string, itemId: number): Promise<void> => {
       await run(() => client.POST('/api/v1/visits', { body: { library, itemId }, keepalive: true }));

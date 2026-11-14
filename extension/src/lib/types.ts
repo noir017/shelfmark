@@ -1,4 +1,4 @@
-import type { components } from '../api/schema';
+import type { components, paths } from '../api/schema';
 
 type S = components['schemas'];
 
@@ -12,6 +12,9 @@ export type QuickSaveResult = S['QuickSaveResult'];
 export type UpdateItemRequest = S['UpdateItemRequest'];
 export type WriteItemResult = S['WriteItemResult'];
 export type WriteResult = S['WriteResult'];
+type TransferOp = paths['/api/v1/libraries/{slug}/items/{itemId}/transfer']['post'];
+export type TransferItemRequest = TransferOp['requestBody']['content']['application/json'];
+export type TransferItemResult = TransferOp['responses'][200]['content']['application/json'];
 export type SearchHit = S['SearchHit'];
 export type SearchResult = S['SearchResult'];
 export type Settings = S['Settings'];

@@ -140,6 +140,18 @@ export function createHandlers(getDb: () => MockDB): HttpHandler[] {
 
   // ---------- 跨库辅助 ----------
 
+  /** 最近添加 / 访问最多：单库与跨库接口共用 */
+  function listBookmarks(c: Ctx, libs: MLib[], keep: (i: MItem) => boolean, cmp: (a: MItem, b: MItem) => number) {
+    const limit = Math.min(100, Number(c.url.searchParams.get('limit') ?? 20) || 20)
+    return libs
+      .flatMap((l) => [...l.items.values()].filter((i) => i.type === 'bookmark' && keep(i)).map((i) => ({ l, i })))
+      .sort((a, b) => cmp(a.i, b.i))
+      .slice(0, limit)
+      .map(({ l, i }) => db().withPath(l, i))
+  }
+  const recentOf = (c: Ctx, libs: MLib[]) => listBookmarks(c, libs, () => true, (a, b) => b.createdAt.localeCompare(a.createdAt) || b.id - a.id)
+  const frequentOf = (c: Ctx, libs: MLib[]) => listBookmarks(c, libs, (i) => i.visitCount > 0, (a, b) => b.visitCount - a.visitCount)
+
   function allBookmarks(u: MUser): Array<{ lib: MLib; it: MItem }> {
     const out: Array<{ lib: MLib; it: MItem }> = []
     for (const l of db().userLibs(u.id)) for (const it of l.items.values()) out.push({ lib: l, it })
@@ -344,7 +356,7 @@ export function createHandlers(getDb: () => MockDB): HttpHandler[] {
       const davUrl = `${c.url.origin}/dav/`
       return json({
         token: { ...db().publicToken(t), token: t.token }, library: l.slug, davUrl, username: c.user.username, bookmarkFile: `${l.slug}.xbel`,
-        profile: { type: 'webdav', url: davUrl, username: c.user.username, password: t.token, bookmark_file: `${l.slug}.xbel`, bookmark_file_type: 'xbel', label: name },
+        profile: [{ type: 'webdav', url: davUrl, username: c.user.username, password: t.token, bookmark_file: `${l.slug}.xbel`, bookmark_file_type: 'xbel', label: name }],
         profileFileName: `floccus-${l.slug}.json`,
       }, 201)
     }),
@@ -481,24 +493,10 @@ export function createHandlers(getDb: () => MockDB): HttpHandler[] {
       db().remove(l, int(c.params.itemId, 'itemId'))
       return { revision: db().commit(l, sourceOf(c), actorOf(c)) }
     }),
-    wrap('get', '/api/v1/libraries/:slug/recent', (c) => {
-      const l = lib(c)
-      const limit = Math.min(100, Number(c.url.searchParams.get('limit') ?? 20) || 20)
-      return [...l.items.values()]
-        .filter((i) => i.type === 'bookmark')
-        .sort((a, b) => b.createdAt.localeCompare(a.createdAt) || b.id - a.id)
-        .slice(0, limit)
-        .map((i) => db().withPath(l, i))
-    }),
-    wrap('get', '/api/v1/libraries/:slug/frequent', (c) => {
-      const l = lib(c)
-      const limit = Math.min(100, Number(c.url.searchParams.get('limit') ?? 20) || 20)
-      return [...l.items.values()]
-        .filter((i) => i.type === 'bookmark' && i.visitCount > 0)
-        .sort((a, b) => b.visitCount - a.visitCount)
-        .slice(0, limit)
-        .map((i) => db().withPath(l, i))
-    }),
+    wrap('get', '/api/v1/libraries/:slug/recent', (c) => recentOf(c, [lib(c)])),
+    wrap('get', '/api/v1/libraries/:slug/frequent', (c) => frequentOf(c, [lib(c)])),
+    wrap('get', '/api/v1/recent', (c) => recentOf(c, db().userLibs(c.user.id))),
+    wrap('get', '/api/v1/frequent', (c) => frequentOf(c, db().userLibs(c.user.id))),
 
     // ---------- quick save / lookup / search ----------
     wrap('post', '/api/v1/quick-save', async (c) => {

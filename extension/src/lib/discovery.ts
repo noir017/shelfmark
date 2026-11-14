@@ -31,24 +31,8 @@ export function toLink(x: ItemWithPath): Link | null {
   };
 }
 
-/** Merge per-library lists (the API has no cross-library recent/frequent endpoint). */
-export function mergeRecent(lists: ItemWithPath[][], count: number): Link[] {
-  return lists
-    .flat()
-    .sort((a, b) => b.item.createdAt.localeCompare(a.item.createdAt) || b.item.id - a.item.id)
-    .map(toLink)
-    .filter((l): l is Link => l !== null)
-    .slice(0, count);
-}
-
-export function mergeFrequent(lists: ItemWithPath[][], count: number): Link[] {
-  return lists
-    .flat()
-    .filter((x) => x.item.visitCount > 0)
-    .sort((a, b) => b.item.visitCount - a.item.visitCount)
-    .map(toLink)
-    .filter((l): l is Link => l !== null)
-    .slice(0, count);
+function toLinks(list: ItemWithPath[]): Link[] {
+  return list.map(toLink).filter((l): l is Link => l !== null);
 }
 
 export async function refreshDiscovery(
@@ -58,18 +42,11 @@ export async function refreshDiscovery(
   now: () => number = Date.now,
 ): Promise<Discovery> {
   const sp = snapshot.settings?.startPage;
-  const slugs = snapshot.libraries.map((l) => l.slug);
-  const recentCount = sp?.recentCount ?? 10;
-  const frequentCount = sp?.frequentCount ?? 10;
-  const [recentLists, frequentLists] = await Promise.all([
-    sp?.showRecent ? Promise.all(slugs.map((s) => api.recent(s, recentCount))) : Promise.resolve([]),
-    sp?.showFrequent ? Promise.all(slugs.map((s) => api.frequent(s, frequentCount))) : Promise.resolve([]),
+  const [recent, frequent] = await Promise.all([
+    sp?.showRecent ? api.recent(sp.recentCount) : Promise.resolve([]),
+    sp?.showFrequent ? api.frequent(sp.frequentCount) : Promise.resolve([]),
   ]);
-  const d: Discovery = {
-    recent: mergeRecent(recentLists, recentCount),
-    frequent: mergeFrequent(frequentLists, frequentCount),
-    fetchedAt: now(),
-  };
+  const d: Discovery = { recent: toLinks(recent), frequent: toLinks(frequent), fetchedAt: now() };
   await writeCache(area, KEY, d);
   return d;
 }

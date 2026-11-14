@@ -253,28 +253,17 @@ class Popup {
       } else {
         const cur = this.current;
         const dest = target ?? this.targetOf(cur);
-        let updated: ItemWithPath;
+        const moving = dest.library !== cur.library || dest.folderId !== cur.item.parentId;
+        const r = await this.api.updateItem(cur.library, cur.item.id, {
+          title: v.title,
+          notes: v.notes || null,
+          tags: v.tags,
+          ...(dest.library === cur.library && moving ? { parentId: dest.folderId } : {}),
+        });
+        let updated: ItemWithPath = { library: cur.library, item: r.item, path: moving ? dest.path : cur.path };
         if (dest.library !== cur.library) {
-          // No cross-library move in the API: create in the new library, then delete the old one.
-          const { result } = await this.api.quickSave({
-            url: this.url,
-            library: dest.library,
-            parentId: dest.folderId,
-            allowDuplicate: true,
-            ...(v.title ? { title: v.title } : {}),
-            ...(v.notes ? { notes: v.notes } : {}),
-            tags: v.tags,
-          });
-          await this.api.deleteItem(cur.library, cur.item.id);
-          updated = { library: result.library, item: result.item, path: result.path };
-        } else {
-          const r = await this.api.updateItem(cur.library, cur.item.id, {
-            title: v.title,
-            notes: v.notes || null,
-            tags: v.tags,
-            ...(dest.folderId !== cur.item.parentId ? { parentId: dest.folderId } : {}),
-          });
-          updated = { library: cur.library, item: r.item, path: dest.folderId !== cur.item.parentId ? dest.path : cur.path };
+          const moved = await this.api.transferItem(cur.library, cur.item.id, { library: dest.library, parentId: dest.folderId });
+          updated = { library: dest.library, item: moved.item, path: dest.path };
         }
         this.setMatches(
           this.matches.map((m) => (m === cur ? updated : m)),
