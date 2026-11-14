@@ -6,6 +6,11 @@
   import { toast } from '../../lib/toast.svelte'
 
   const s = $derived(app.settings)
+  const identity = $derived(
+    app.me?.authMethod === 'access'
+      ? 'Cloudflare Access' + (app.me.email ? ' · ' + app.me.email : '')
+      : t('account.localNetwork'),
+  )
 
   let useDefault = $state(!!app.settings?.defaultSave)
   let defLib = $state(app.settings?.defaultSave?.library ?? defaultLibrary() ?? 'bookmarks')
@@ -25,7 +30,7 @@
 {#if s}
   <div class="card">
     <h2>{t('account.prefs')}</h2>
-    <p class="hint">{t('account.signedInAs', { user: app.me?.user.username ?? '' })}{#if app.me?.authMethod === 'access'} · Cloudflare Access{#if app.me.email} · {app.me.email}{/if}{:else} · {t('account.localNetwork')}{/if}</p>
+    <p class="hint">{t('account.signedInAs', { user: app.me?.user.username ?? '' })} · {identity}</p>
     <label class="field">
       <span>{t('account.language')}</span>
       <select value={s.language} onchange={(e) => patch({ language: (e.currentTarget as HTMLSelectElement).value as Settings['language'] })} data-testid="language">
