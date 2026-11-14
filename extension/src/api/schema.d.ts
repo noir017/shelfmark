@@ -303,6 +303,7 @@ export interface paths {
             };
             cookie?: never;
         };
+        /** @description ETag 形如 "r<revision>-<变更序号>"，每次内容变化都会变（合并进上一修订的连续编辑也会变）；If-None-Match 按完整 ETag 比较 */
         get: operations["getTree"];
         put?: never;
         post?: never;
@@ -336,6 +337,7 @@ export interface paths {
             header?: never;
             path: {
                 slug: components["parameters"]["LibrarySlug"];
+                /** @description 条目 ID，非 0；可能为负（Floccus 给缺 id 的条目派生负数 ID，服务端原样保存） */
                 itemId: components["parameters"]["ItemId"];
             };
             cookie?: never;
@@ -363,6 +365,27 @@ export interface paths {
         put?: never;
         /** 原子批量操作，全部成功或全部失败 */
         post: operations["batchItems"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/libraries/{slug}/items/{itemId}/transfer": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                slug: components["parameters"]["LibrarySlug"];
+                /** @description 条目 ID，非 0；可能为负（Floccus 给缺 id 的条目派生负数 ID，服务端原样保存） */
+                itemId: components["parameters"]["ItemId"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** 把条目（文件夹连同子孙）移到另一个库；目标库分配新 ID，备注、标签、访问次数、图标、检测结果都保留；两个库各生成一个修订 */
+        post: operations["transferItem"];
         delete?: never;
         options?: never;
         head?: never;
@@ -405,6 +428,40 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/recent": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** 当前用户所有库里最近添加的书签 */
+        get: operations["listRecentAll"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/frequent": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** 当前用户所有库里访问最多的书签 */
+        get: operations["listFrequentAll"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/quick-save": {
         parameters: {
             query?: never;
@@ -414,7 +471,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** 快速收藏（插件、分享、书签小工具用）。不指定位置时用设置里的默认收藏位置，未设置则存到库 bookmarks 根下的“收件箱”文件夹（不存在则创建）。 */
+        /** 快速收藏（插件、分享、书签小工具用）。不指定位置时用设置里的默认收藏位置，未设置则存到库 bookmarks 根下的“收件箱”文件夹（不存在则创建）；传了 library 没传 parentId 时存到该库根下的“收件箱”文件夹（不存在则创建）。 */
         post: operations["quickSave"];
         delete?: never;
         options?: never;
@@ -997,8 +1054,13 @@ export interface components {
             username: string;
             /** @example bookmarks.xbel */
             bookmarkFile: string;
-            /** @description 可直接导入 Floccus 的配置 JSON（格式按 Floccus 源码）；服务端无法保证格式时为 null */
+            /**
+             * @description 可直接导入 Floccus 的配置 JSON（格式按 Floccus 源码）；服务端无法保证格式时为 null。
+             *     Floccus「导入配置」读取的是账号数组（Account.export 的输出），所以服务端返回数组，原样 JSON.stringify 后存为 profileFileName 即可导入。
+             */
             profile?: {
+                [key: string]: unknown;
+            }[] | {
                 [key: string]: unknown;
             } | null;
             profileFileName?: string | null;
@@ -1041,12 +1103,15 @@ export interface components {
             error?: string | null;
         };
         Item: {
-            /** Format: int64 */
+            /**
+             * Format: int64
+             * @description 非 0，可能为负（Floccus 派生的 ID）
+             */
             id: number;
             type: components["schemas"]["ItemType"];
             /**
              * Format: int64
-             * @description 0 为根
+             * @description 0 为根；可能为负
              */
             parentId: number;
             /** @description 兄弟间从 0 开始 */
@@ -1096,7 +1161,7 @@ export interface components {
             notes?: string;
             tags?: components["schemas"]["TagName"][];
         };
-        /** @description 只改传入的字段。parentId/position 同时或单独传表示移动 */
+        /** @description 只改传入的字段。parentId/position 同时或单独传表示移动；position 是移除自身后在目标文件夹里的最终下标（同一文件夹内移动也一样），超出则放末尾 */
         UpdateItemRequest: {
             title?: string;
             url?: string;
@@ -1158,7 +1223,7 @@ export interface components {
             /** Format: int64 */
             parentId?: number;
             parentRef?: string;
-            /** @description 不传则追加到末尾 */
+            /** @description 移除自身后在目标文件夹里的最终下标；不传则追加到末尾 */
             position?: number;
         };
         BatchDelete: {
@@ -1584,6 +1649,7 @@ export interface components {
     };
     parameters: {
         LibrarySlug: components["schemas"]["Slug"];
+        /** @description 条目 ID，非 0；可能为负（Floccus 给缺 id 的条目派生负数 ID，服务端原样保存） */
         ItemId: number;
         Rev: number;
         PendingId: number;
@@ -2229,6 +2295,7 @@ export interface operations {
             header?: never;
             path: {
                 slug: components["parameters"]["LibrarySlug"];
+                /** @description 条目 ID，非 0；可能为负（Floccus 给缺 id 的条目派生负数 ID，服务端原样保存） */
                 itemId: components["parameters"]["ItemId"];
             };
             cookie?: never;
@@ -2253,6 +2320,7 @@ export interface operations {
             header?: never;
             path: {
                 slug: components["parameters"]["LibrarySlug"];
+                /** @description 条目 ID，非 0；可能为负（Floccus 给缺 id 的条目派生负数 ID，服务端原样保存） */
                 itemId: components["parameters"]["ItemId"];
             };
             cookie?: never;
@@ -2278,6 +2346,7 @@ export interface operations {
             header?: never;
             path: {
                 slug: components["parameters"]["LibrarySlug"];
+                /** @description 条目 ID，非 0；可能为负（Floccus 给缺 id 的条目派生负数 ID，服务端原样保存） */
                 itemId: components["parameters"]["ItemId"];
             };
             cookie?: never;
@@ -2333,6 +2402,58 @@ export interface operations {
             423: components["responses"]["Locked"];
         };
     };
+    transferItem: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                slug: components["parameters"]["LibrarySlug"];
+                /** @description 条目 ID，非 0；可能为负（Floccus 给缺 id 的条目派生负数 ID，服务端原样保存） */
+                itemId: components["parameters"]["ItemId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    library: components["schemas"]["Slug"];
+                    /**
+                     * Format: int64
+                     * @description 目标库里的父文件夹，0 为根
+                     */
+                    parentId: number;
+                    /** @description 不传则追加到末尾 */
+                    position?: number;
+                };
+            };
+        };
+        responses: {
+            /** @description 已移动 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /**
+                         * Format: int64
+                         * @description 目标库的修订号
+                         */
+                        revision: number;
+                        /**
+                         * Format: int64
+                         * @description 源库的修订号
+                         */
+                        sourceRevision: number;
+                        item: components["schemas"]["Item"];
+                    };
+                };
+            };
+            404: components["responses"]["NotFound"];
+            422: components["responses"]["Validation"];
+            423: components["responses"]["Locked"];
+        };
+    };
     listRecent: {
         parameters: {
             query?: {
@@ -2381,6 +2502,50 @@ export interface operations {
             };
         };
     };
+    listRecentAll: {
+        parameters: {
+            query?: {
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 最近添加的书签 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ItemWithPath"][];
+                };
+            };
+        };
+    };
+    listFrequentAll: {
+        parameters: {
+            query?: {
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 访问最多的书签 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ItemWithPath"][];
+                };
+            };
+        };
+    };
     quickSave: {
         parameters: {
             query?: never;
@@ -2394,7 +2559,7 @@ export interface operations {
             };
         };
         responses: {
-            /** @description 该 URL 已存在（existed=true），未重复创建 */
+            /** @description 该 URL 已存在（existed=true），未重复创建，也不修改已有书签（请求里的标题、标签、备注、位置都被忽略） */
             200: {
                 headers: {
                     [name: string]: unknown;

@@ -1153,7 +1153,8 @@ components:
       name: itemId
       in: path
       required: true
-      schema: { type: integer, format: int64, minimum: 1 }
+      description: 条目 ID，非 0；可能为负（Floccus 给缺 id 的条目派生负数 ID，服务端原样保存）
+      schema: { type: integer, format: int64 }
     Rev:
       name: rev
       in: path
@@ -1410,9 +1411,9 @@ components:
       type: object
       required: [id, type, parentId, position, title, createdAt, updatedAt, tags, visitCount]
       properties:
-        id: { type: integer, format: int64 }
+        id: { type: integer, format: int64, description: 非 0，可能为负（Floccus 派生的 ID） }
         type: { $ref: '#/components/schemas/ItemType' }
-        parentId: { type: integer, format: int64, description: 0 为根 }
+        parentId: { type: integer, format: int64, description: 0 为根；可能为负 }
         position: { type: integer, description: 兄弟间从 0 开始 }
         title: { type: string }
         url: { type: [string, 'null'], description: 仅书签 }
