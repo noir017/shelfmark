@@ -69,7 +69,7 @@ func TestRun(t *testing.T) {
 	if got := ids("golang", ""); len(got) != 2 {
 		t.Errorf("golang: %v", got)
 	}
-	check("文档", "", l+2)          // two characters: LIKE fallback
+	check("文档", "", l+2) // two characters: LIKE fallback
 	check("in:开发 -rust", "", l+2)
 	check("#GoLang", "", l+2)
 	check("site:example.com", "", l+4, w+1)

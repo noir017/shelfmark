@@ -40,12 +40,12 @@ func TestCheck(t *testing.T) {
 	c.PerHost = 0
 	ctx := context.Background()
 	cases := map[string]string{
-		srv.URL + "/ok":      StatusOK,
-		srv.URL + "/nohead":  StatusOK,
-		srv.URL + "/moved":   StatusRedirect,
-		srv.URL + "/gone":    StatusBroken,
-		srv.URL + "/loop":    StatusUnreachable,
-		"javascript:void(0)": StatusSkipped,
+		srv.URL + "/ok":       StatusOK,
+		srv.URL + "/nohead":   StatusOK,
+		srv.URL + "/moved":    StatusRedirect,
+		srv.URL + "/gone":     StatusBroken,
+		srv.URL + "/loop":     StatusUnreachable,
+		"javascript:void(0)":  StatusSkipped,
 		"http://127.0.0.1:1/": StatusUnreachable,
 	}
 	for u, want := range cases {
