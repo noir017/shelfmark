@@ -1,0 +1,37 @@
+{
+  "highestId": 5,
+  "persistIds": false,
+  "children": [
+    {
+      "type": "bookmark",
+      "id": 1,
+      "url": "https://example.com/a?x=1&y=2",
+      "title": "padded <title>"
+    },
+    {
+      "type": "folder",
+      "id": 2,
+      "title": "",
+      "children": [
+        {
+          "type": "bookmark",
+          "id": 3,
+          "url": "https://example.com/b",
+          "title": ""
+        },
+        {
+          "type": "bookmark",
+          "id": 4,
+          "url": "https://example.com/c",
+          "title": ""
+        }
+      ]
+    },
+    {
+      "type": "bookmark",
+      "id": 5,
+      "url": "https://example.com/d",
+      "title": "trailing junk id"
+    }
+  ]
+}

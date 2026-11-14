@@ -1,0 +1,38 @@
+{
+  "highestId": 12,
+  "persistIds": true,
+  "children": [
+    {
+      "type": "bookmark",
+      "id": 1,
+      "url": "https://example.com/",
+      "title": "Has id"
+    },
+    {
+      "type": "folder",
+      "id": 2,
+      "title": "Folder",
+      "children": [
+        {
+          "type": "bookmark",
+          "id": -8195422029100977,
+          "url": "https://example.com/new",
+          "title": "No id"
+        },
+        {
+          "type": "folder",
+          "id": -2149088480563782,
+          "title": "New folder",
+          "children": [
+            {
+              "type": "bookmark",
+              "id": 7,
+              "url": "https://example.com/deep",
+              "title": "Deep"
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<xbel version="1.0">
+<bookmark href="https://example.com/"><title>Example</title></bookmark>
+<bookmark href="https://example.net/" id="-128963258270097"><title>Taken</title></bookmark>
+</xbel>
