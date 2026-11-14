@@ -1,0 +1,7 @@
+{
+  "name": "shelfmark-xbel-fixtures",
+  "private": true,
+  "description": "Generates XBEL fixtures with the same fast-xml-parser version and options Floccus uses",
+  "scripts": { "gen": "node gen.mjs" },
+  "dependencies": { "fast-xml-parser": "5.11.2" }
+}

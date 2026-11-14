@@ -1,0 +1,63 @@
+{
+  "highestId": 9,
+  "persistIds": false,
+  "children": [
+    {
+      "type": "bookmark",
+      "id": 1,
+      "url": "https://example.com/?a=1&b=2",
+      "title": "A & B <c> \"q\" 's'"
+    },
+    {
+      "type": "folder",
+      "id": 2,
+      "title": "",
+      "children": []
+    },
+    {
+      "type": "bookmark",
+      "id": 3,
+      "url": "https://example.com/a\"b<c>&amp;",
+      "title": "already &amp; escaped"
+    },
+    {
+      "type": "folder",
+      "id": 4,
+      "title": "nested",
+      "children": [
+        {
+          "type": "folder",
+          "id": 5,
+          "title": "deeper",
+          "children": [
+            {
+              "type": "folder",
+              "id": 6,
+              "title": "deepest",
+              "children": [
+                {
+                  "type": "bookmark",
+                  "id": 7,
+                  "url": "javascript:alert(1)",
+                  "title": "bookmarklet"
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "type": "bookmark",
+      "id": 8,
+      "url": "https://example.com/empty-title",
+      "title": ""
+    },
+    {
+      "type": "bookmark",
+      "id": 9,
+      "url": "https://example.com/multi",
+      "title": "line one\nline two"
+    }
+  ]
+}

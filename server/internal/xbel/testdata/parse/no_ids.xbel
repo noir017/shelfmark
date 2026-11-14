@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<xbel version="1.0">
+  <bookmark href="https://example.com/"><title>Example</title></bookmark>
+  <bookmark href="https://example.com/"><title>Example again</title></bookmark>
+  <folder><title>Folder 🎉</title>
+    <bookmark href="https://example.org/x"><title>X</title></bookmark>
+    <folder><title>Sub</title></folder>
+    <folder><title>Sub</title></folder>
+  </folder>
+  <folder><title>Folder 🎉</title></folder>
+</xbel>

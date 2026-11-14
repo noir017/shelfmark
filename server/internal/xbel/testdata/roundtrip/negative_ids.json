@@ -1,0 +1,25 @@
+{
+  "highestId": 3,
+  "persistIds": false,
+  "children": [
+    {
+      "type": "bookmark",
+      "id": -3846318462231,
+      "url": "https://example.com/derived",
+      "title": "derived id"
+    },
+    {
+      "type": "folder",
+      "id": -77,
+      "title": "derived folder",
+      "children": [
+        {
+          "type": "bookmark",
+          "id": 3,
+          "url": "https://example.net/",
+          "title": "Net"
+        }
+      ]
+    }
+  ]
+}

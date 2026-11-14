@@ -1,0 +1,49 @@
+{
+  "highestId": null,
+  "persistIds": false,
+  "children": [
+    {
+      "type": "bookmark",
+      "id": -128963258270097,
+      "url": "https://example.com/",
+      "title": "Example"
+    },
+    {
+      "type": "bookmark",
+      "id": -1541576606523676,
+      "url": "https://example.com/",
+      "title": "Example again"
+    },
+    {
+      "type": "folder",
+      "id": -3121227572307745,
+      "title": "Folder 🎉",
+      "children": [
+        {
+          "type": "bookmark",
+          "id": -1236601677696987,
+          "url": "https://example.org/x",
+          "title": "X"
+        },
+        {
+          "type": "folder",
+          "id": -6644787176078833,
+          "title": "Sub",
+          "children": []
+        },
+        {
+          "type": "folder",
+          "id": -709967179431031,
+          "title": "Sub",
+          "children": []
+        }
+      ]
+    },
+    {
+      "type": "folder",
+      "id": -6191005513935846,
+      "title": "Folder 🎉",
+      "children": []
+    }
+  ]
+}
