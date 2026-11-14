@@ -1,0 +1,314 @@
+{
+  "extName": {
+    "message": "shelfmark"
+  },
+  "extDescription": {
+    "message": "Save, find and open bookmarks on your self-hosted shelfmark server."
+  },
+  "actionTitle": {
+    "message": "shelfmark"
+  },
+  "commandSavePage": {
+    "message": "Save this page to the default location"
+  },
+  "menuSavePage": {
+    "message": "Save this page"
+  },
+  "menuSaveLink": {
+    "message": "Save this link"
+  },
+  "badgeSaved": {
+    "message": "Saved in:"
+  },
+  "badgeSaving": {
+    "message": "Saving…"
+  },
+  "badgeSavedTo": {
+    "message": "Saved \"$1\" to $2"
+  },
+  "badgeAlreadySaved": {
+    "message": "\"$1\" was already in $2"
+  },
+  "badgeSaveFailed": {
+    "message": "Save failed"
+  },
+  "errUnsupportedUrl": {
+    "message": "Only http(s) pages can be saved."
+  },
+  "errGeneric": {
+    "message": "Error: $1"
+  },
+  "errAccessBlocked": {
+    "message": "Blocked by Cloudflare Access. Enter a service token in the settings."
+  },
+  "errAccessRejected": {
+    "message": "Cloudflare Access rejected the service token. Check Client ID / Secret and the Access policy."
+  },
+  "errUnauthorized": {
+    "message": "The token is invalid or revoked. Log in again in the settings."
+  },
+  "errNetwork": {
+    "message": "Cannot reach the server."
+  },
+  "errTimeout": {
+    "message": "The server took too long to answer."
+  },
+  "errLocked": {
+    "message": "The library is syncing with $1, try again shortly."
+  },
+  "errRateLimited": {
+    "message": "Too many failed attempts, try again later."
+  },
+  "errForbidden": {
+    "message": "Not allowed: $1"
+  },
+  "errNotFound": {
+    "message": "Not found (it may have been deleted)."
+  },
+  "errValidation": {
+    "message": "Invalid input: $1"
+  },
+  "errUnavailable": {
+    "message": "Not available on this server right now."
+  },
+  "errServerUrl": {
+    "message": "Enter a valid server address, e.g. https://bm.example.com"
+  },
+  "errPermissionDenied": {
+    "message": "Access to the server was not granted."
+  },
+  "errLoginFailed": {
+    "message": "Wrong username or password."
+  },
+  "omniboxDefault": {
+    "message": "Search bookmarks: %s"
+  },
+  "omniboxNotConfigured": {
+    "message": "shelfmark: connect a server in the settings first"
+  },
+  "openSettings": {
+    "message": "Settings"
+  },
+  "popupNotConfigured": {
+    "message": "Not connected to a shelfmark server yet."
+  },
+  "popupUnsupported": {
+    "message": "This page can't be saved."
+  },
+  "popupChecking": {
+    "message": "Checking…"
+  },
+  "popupSaved": {
+    "message": "Saved"
+  },
+  "popupNotSaved": {
+    "message": "Not saved yet"
+  },
+  "popupError": {
+    "message": "Can't check this page"
+  },
+  "popupSave": {
+    "message": "Save"
+  },
+  "popupUpdate": {
+    "message": "Save changes"
+  },
+  "popupDelete": {
+    "message": "Delete"
+  },
+  "popupDeleteConfirm": {
+    "message": "Click again to delete"
+  },
+  "popupWorking": {
+    "message": "Working…"
+  },
+  "popupSavedTo": {
+    "message": "Saved to $1"
+  },
+  "popupExisted": {
+    "message": "Already in $1; loaded the existing bookmark."
+  },
+  "popupUpdated": {
+    "message": "Changes saved"
+  },
+  "popupDeleted": {
+    "message": "Deleted"
+  },
+  "popupAiSuggest": {
+    "message": "AI suggestions"
+  },
+  "popupAiWorking": {
+    "message": "Asking AI…"
+  },
+  "popupAiUseTitle": {
+    "message": "Use this title"
+  },
+  "popupAiEmpty": {
+    "message": "No suggestions"
+  },
+  "fieldTitle": {
+    "message": "Title"
+  },
+  "fieldLocation": {
+    "message": "Location"
+  },
+  "fieldTags": {
+    "message": "Tags"
+  },
+  "fieldNotes": {
+    "message": "Notes"
+  },
+  "tagsPlaceholder": {
+    "message": "tag1, tag2"
+  },
+  "pickerSearch": {
+    "message": "Search folders"
+  },
+  "pickerDefault": {
+    "message": "Default location"
+  },
+  "pickerRecent": {
+    "message": "Recently used"
+  },
+  "pickerAll": {
+    "message": "All folders"
+  },
+  "pickerNoMatch": {
+    "message": "No matching folder"
+  },
+  "pickerTruncated": {
+    "message": "Keep typing to narrow down"
+  },
+  "optionsTitle": {
+    "message": "shelfmark settings"
+  },
+  "sectionServer": {
+    "message": "Server and account"
+  },
+  "fieldServerUrl": {
+    "message": "Server address"
+  },
+  "serverUrlHelp": {
+    "message": "The browser asks for permission to access this address only."
+  },
+  "accessTitle": {
+    "message": "Cloudflare Access service token (optional)"
+  },
+  "accessHelp": {
+    "message": "Only needed when the server sits behind Cloudflare Access. Every request then sends CF-Access-Client-Id / CF-Access-Client-Secret; add a Service Auth policy for this token in Access."
+  },
+  "loginWithPassword": {
+    "message": "Username and password"
+  },
+  "loginWithToken": {
+    "message": "Paste a token"
+  },
+  "fieldUsername": {
+    "message": "Username"
+  },
+  "fieldPassword": {
+    "message": "Password"
+  },
+  "fieldDeviceName": {
+    "message": "Device name"
+  },
+  "login": {
+    "message": "Log in"
+  },
+  "fieldToken": {
+    "message": "API token"
+  },
+  "tokenHelp": {
+    "message": "Create a token with the api scope on the web page under Settings → Devices."
+  },
+  "saveToken": {
+    "message": "Save token"
+  },
+  "testConnection": {
+    "message": "Test connection"
+  },
+  "logout": {
+    "message": "Log out"
+  },
+  "sectionDefaultSave": {
+    "message": "Default save location"
+  },
+  "defaultSaveServer": {
+    "message": "Not set (server inbox)"
+  },
+  "defaultSaveHelp": {
+    "message": "Used by the shortcut, the context menu and new saves in the popup. Stored on the server, shared with the web page."
+  },
+  "sectionNewTab": {
+    "message": "New tab"
+  },
+  "newTabToggle": {
+    "message": "Show bookmarks on the new tab page"
+  },
+  "newTabHelp": {
+    "message": "When off, the new tab only shows a search box."
+  },
+  "sectionShortcuts": {
+    "message": "Shortcuts"
+  },
+  "shortcutLabel": {
+    "message": "Save the current page:"
+  },
+  "shortcutHelp": {
+    "message": "Change it in the browser's extension shortcut settings."
+  },
+  "omniboxLabel": {
+    "message": "Search from the address bar: type"
+  },
+  "shortcutUnset": {
+    "message": "not set"
+  },
+  "saved": {
+    "message": "Saved"
+  },
+  "devicePrefix": {
+    "message": "Extension"
+  },
+  "connNotLoggedIn": {
+    "message": "Not logged in."
+  },
+  "connWorking": {
+    "message": "Connecting…"
+  },
+  "connServerOnly": {
+    "message": "Server reachable (shelfmark $1), not logged in."
+  },
+  "connOk": {
+    "message": "Connected as $1 (shelfmark $2)."
+  },
+  "newtabTitle": {
+    "message": "New Tab"
+  },
+  "newtabSearch": {
+    "message": "Search bookmarks or enter an address"
+  },
+  "newtabOpenWeb": {
+    "message": "Open shelfmark"
+  },
+  "newtabSetup": {
+    "message": "Connect a shelfmark server to see your bookmarks here."
+  },
+  "newtabOffline": {
+    "message": "Offline: showing the copy from $1."
+  },
+  "newtabOfflineEmpty": {
+    "message": "Offline and nothing cached yet."
+  },
+  "newtabRecent": {
+    "message": "Recently added"
+  },
+  "newtabFrequent": {
+    "message": "Most visited"
+  },
+  "newtabEmpty": {
+    "message": "No bookmarks yet."
+  },
+  "newtabSearchServer": {
+    "message": "Search \"$1\" on shelfmark"
+  }
+}

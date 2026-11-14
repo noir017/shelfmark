@@ -1,0 +1,51 @@
+body.popup { width: 360px; padding: 10px 12px 12px; }
+
+.bar { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
+.bar .brand { font-weight: 600; flex: 1; }
+
+.status { font-weight: 600; margin-bottom: 4px; }
+.status[data-state="saved"] { color: var(--ok); }
+.status[data-state="saved"]::before { content: "✓ "; }
+.status[data-state="checking"] { color: var(--muted); font-weight: normal; }
+.status[data-state="error"] { color: var(--danger); }
+
+.locations { list-style: none; margin: 0 0 8px; padding: 0; font-size: 13px; color: var(--muted); }
+.locations li { padding: 1px 0; }
+.locations .current { font-weight: 600; }
+
+.url { font-size: 12px; margin: -4px 0 8px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+.actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 10px; }
+
+.ai { margin-top: 4px; }
+
+.picker { position: relative; }
+.picker-button {
+  width: 100%;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  background: var(--bg);
+  text-align: left;
+}
+.picker-label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.picker-panel {
+  position: absolute;
+  z-index: 10;
+  left: 0;
+  right: 0;
+  top: calc(100% + 2px);
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: 0 6px 20px rgb(0 0 0 / 18%);
+  padding: 6px;
+}
+.picker-list { list-style: none; margin: 6px 0 0; padding: 0; max-height: 220px; overflow-y: auto; }
+.picker-group { font-size: 11px; color: var(--muted); padding: 4px 6px 2px; text-transform: uppercase; }
+.picker-option { padding: 4px 6px; border-radius: 4px; cursor: pointer; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.picker-option.active { background: var(--bg-soft); }
+.picker-option[aria-selected="true"] { font-weight: 600; color: var(--accent); }
+.picker-empty { padding: 4px 6px; color: var(--muted); font-size: 12px; }
+
+.view p { margin: 4px 0 10px; }

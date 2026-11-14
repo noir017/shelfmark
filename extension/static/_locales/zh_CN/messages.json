@@ -1,0 +1,314 @@
+{
+  "extName": {
+    "message": "shelfmark"
+  },
+  "extDescription": {
+    "message": "收藏、搜索、打开自托管 shelfmark 服务器上的书签。"
+  },
+  "actionTitle": {
+    "message": "shelfmark"
+  },
+  "commandSavePage": {
+    "message": "收藏当前页到默认位置"
+  },
+  "menuSavePage": {
+    "message": "收藏此页"
+  },
+  "menuSaveLink": {
+    "message": "收藏此链接"
+  },
+  "badgeSaved": {
+    "message": "已收藏于："
+  },
+  "badgeSaving": {
+    "message": "正在收藏…"
+  },
+  "badgeSavedTo": {
+    "message": "已将“$1”收藏到 $2"
+  },
+  "badgeAlreadySaved": {
+    "message": "“$1”已在 $2 中"
+  },
+  "badgeSaveFailed": {
+    "message": "收藏失败"
+  },
+  "errUnsupportedUrl": {
+    "message": "只能收藏 http(s) 网页。"
+  },
+  "errGeneric": {
+    "message": "出错了：$1"
+  },
+  "errAccessBlocked": {
+    "message": "被 Cloudflare Access 拦截，请在设置里填服务令牌。"
+  },
+  "errAccessRejected": {
+    "message": "Cloudflare Access 拒绝了服务令牌，请检查 Client ID / Secret 和 Access 策略。"
+  },
+  "errUnauthorized": {
+    "message": "令牌无效或已吊销，请在设置里重新登录。"
+  },
+  "errNetwork": {
+    "message": "连不上服务器。"
+  },
+  "errTimeout": {
+    "message": "服务器响应超时。"
+  },
+  "errLocked": {
+    "message": "库正在与 $1 同步，请稍后重试。"
+  },
+  "errRateLimited": {
+    "message": "失败次数过多，请稍后再试。"
+  },
+  "errForbidden": {
+    "message": "没有权限：$1"
+  },
+  "errNotFound": {
+    "message": "找不到（可能已被删除）。"
+  },
+  "errValidation": {
+    "message": "输入不合法：$1"
+  },
+  "errUnavailable": {
+    "message": "服务器上暂不可用。"
+  },
+  "errServerUrl": {
+    "message": "请填写有效的服务器地址，如 https://bm.example.com"
+  },
+  "errPermissionDenied": {
+    "message": "没有获得访问该服务器的权限。"
+  },
+  "errLoginFailed": {
+    "message": "用户名或密码错误。"
+  },
+  "omniboxDefault": {
+    "message": "搜索书签：%s"
+  },
+  "omniboxNotConfigured": {
+    "message": "shelfmark：请先在设置里连接服务器"
+  },
+  "openSettings": {
+    "message": "设置"
+  },
+  "popupNotConfigured": {
+    "message": "还没有连接 shelfmark 服务器。"
+  },
+  "popupUnsupported": {
+    "message": "此页面无法收藏。"
+  },
+  "popupChecking": {
+    "message": "正在检查…"
+  },
+  "popupSaved": {
+    "message": "已收藏"
+  },
+  "popupNotSaved": {
+    "message": "未收藏"
+  },
+  "popupError": {
+    "message": "无法检查此页"
+  },
+  "popupSave": {
+    "message": "收藏"
+  },
+  "popupUpdate": {
+    "message": "保存修改"
+  },
+  "popupDelete": {
+    "message": "删除"
+  },
+  "popupDeleteConfirm": {
+    "message": "再点一次确认删除"
+  },
+  "popupWorking": {
+    "message": "处理中…"
+  },
+  "popupSavedTo": {
+    "message": "已收藏到 $1"
+  },
+  "popupExisted": {
+    "message": "已在 $1 中，已载入现有书签。"
+  },
+  "popupUpdated": {
+    "message": "已保存修改"
+  },
+  "popupDeleted": {
+    "message": "已删除"
+  },
+  "popupAiSuggest": {
+    "message": "AI 推荐"
+  },
+  "popupAiWorking": {
+    "message": "AI 推荐中…"
+  },
+  "popupAiUseTitle": {
+    "message": "使用这个标题"
+  },
+  "popupAiEmpty": {
+    "message": "没有推荐"
+  },
+  "fieldTitle": {
+    "message": "标题"
+  },
+  "fieldLocation": {
+    "message": "位置"
+  },
+  "fieldTags": {
+    "message": "标签"
+  },
+  "fieldNotes": {
+    "message": "备注"
+  },
+  "tagsPlaceholder": {
+    "message": "标签1, 标签2"
+  },
+  "pickerSearch": {
+    "message": "搜索文件夹"
+  },
+  "pickerDefault": {
+    "message": "默认位置"
+  },
+  "pickerRecent": {
+    "message": "最近使用"
+  },
+  "pickerAll": {
+    "message": "全部文件夹"
+  },
+  "pickerNoMatch": {
+    "message": "没有匹配的文件夹"
+  },
+  "pickerTruncated": {
+    "message": "继续输入以缩小范围"
+  },
+  "optionsTitle": {
+    "message": "shelfmark 设置"
+  },
+  "sectionServer": {
+    "message": "服务器与账号"
+  },
+  "fieldServerUrl": {
+    "message": "服务器地址"
+  },
+  "serverUrlHelp": {
+    "message": "浏览器只会申请访问这个地址的权限。"
+  },
+  "accessTitle": {
+    "message": "Cloudflare Access 服务令牌（可选）"
+  },
+  "accessHelp": {
+    "message": "服务器在 Cloudflare Access 后面时才需要。填了之后每个请求都带 CF-Access-Client-Id / CF-Access-Client-Secret，Access 应用里要为该服务令牌加 Service Auth 策略。"
+  },
+  "loginWithPassword": {
+    "message": "用户名密码登录"
+  },
+  "loginWithToken": {
+    "message": "粘贴令牌"
+  },
+  "fieldUsername": {
+    "message": "用户名"
+  },
+  "fieldPassword": {
+    "message": "密码"
+  },
+  "fieldDeviceName": {
+    "message": "设备名"
+  },
+  "login": {
+    "message": "登录"
+  },
+  "fieldToken": {
+    "message": "API 令牌"
+  },
+  "tokenHelp": {
+    "message": "在网页“设置 → 设备”里创建一个 api 令牌。"
+  },
+  "saveToken": {
+    "message": "保存令牌"
+  },
+  "testConnection": {
+    "message": "测试连接"
+  },
+  "logout": {
+    "message": "退出登录"
+  },
+  "sectionDefaultSave": {
+    "message": "默认收藏位置"
+  },
+  "defaultSaveServer": {
+    "message": "未设置（服务端收件箱）"
+  },
+  "defaultSaveHelp": {
+    "message": "快捷键、右键菜单和弹窗新收藏都用它。保存在服务端，与网页共用。"
+  },
+  "sectionNewTab": {
+    "message": "新标签页"
+  },
+  "newTabToggle": {
+    "message": "新标签页显示书签页"
+  },
+  "newTabHelp": {
+    "message": "关闭后新标签页只显示搜索框。"
+  },
+  "sectionShortcuts": {
+    "message": "快捷方式"
+  },
+  "shortcutLabel": {
+    "message": "收藏当前页："
+  },
+  "shortcutHelp": {
+    "message": "可在浏览器的扩展快捷键设置里修改。"
+  },
+  "omniboxLabel": {
+    "message": "地址栏搜索：输入"
+  },
+  "shortcutUnset": {
+    "message": "未设置"
+  },
+  "saved": {
+    "message": "已保存"
+  },
+  "devicePrefix": {
+    "message": "插件"
+  },
+  "connNotLoggedIn": {
+    "message": "未登录。"
+  },
+  "connWorking": {
+    "message": "正在连接…"
+  },
+  "connServerOnly": {
+    "message": "服务器可访问（shelfmark $1），尚未登录。"
+  },
+  "connOk": {
+    "message": "已连接：$1（shelfmark $2）。"
+  },
+  "newtabTitle": {
+    "message": "新标签页"
+  },
+  "newtabSearch": {
+    "message": "搜索书签或输入网址"
+  },
+  "newtabOpenWeb": {
+    "message": "打开 shelfmark 网页"
+  },
+  "newtabSetup": {
+    "message": "连接 shelfmark 服务器后这里会显示书签。"
+  },
+  "newtabOffline": {
+    "message": "离线：显示的是 $1 的缓存。"
+  },
+  "newtabOfflineEmpty": {
+    "message": "离线，且还没有缓存。"
+  },
+  "newtabRecent": {
+    "message": "最近添加"
+  },
+  "newtabFrequent": {
+    "message": "常用"
+  },
+  "newtabEmpty": {
+    "message": "还没有书签。"
+  },
+  "newtabSearchServer": {
+    "message": "在 shelfmark 网页中搜索“$1”"
+  }
+}
