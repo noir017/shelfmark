@@ -15,6 +15,7 @@
     "test": "npm run test:unit && npm run test:e2e && npm run lint:firefox",
     "test:unit": "vitest run",
     "test:e2e": "playwright test",
+    "test:real": "playwright test -c playwright.real.config.ts",
     "lint:firefox": "web-ext lint --source-dir dist/firefox --self-hosted --warnings-as-errors",
     "package": "node scripts/package.mjs",
     "fake-server": "node test/fake-server/cli.mjs"

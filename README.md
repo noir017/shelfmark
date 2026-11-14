@@ -131,6 +131,8 @@ cd web && npm run dev                            # 带内存假后端
 cd web && npm run check && npm run test:unit
 cd extension && npm run build && npm run test:unit
 cd extension && npm run fake-server              # 插件用的假服务端
+cd web && npm run test:real                      # make all 之后：网页关键流程对真实二进制跑
+cd extension && npm run test:real                # make all 之后：插件冒烟对真实二进制跑
 npm run gen:api                                  # 在 web/ 或 extension/ 下，按 api/openapi.yaml 重新生成类型
 
 docker buildx build --platform linux/amd64,linux/arm64 -t shelfmark:latest .

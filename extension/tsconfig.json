@@ -15,5 +15,5 @@
     "noFallthroughCasesInSwitch": true,
     "noImplicitOverride": true
   },
-  "include": ["src", "test", "vitest.config.ts", "playwright.config.ts"]
+  "include": ["src", "test", "vitest.config.ts", "playwright.config.ts", "playwright.real.config.ts"]
 }
