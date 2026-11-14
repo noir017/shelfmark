@@ -110,6 +110,12 @@ func Parse(data []byte) (*Doc, error) {
 	if err := Detect(data); err != nil {
 		return nil, err
 	}
+	return ParseLenient(data)
+}
+
+// ParseLenient parses without requiring Floccus' literal XML declaration
+// (used for imports from other programs).
+func ParseLenient(data []byte) (*Doc, error) {
 	doc := &Doc{}
 	doc.HighestID, doc.HasHighestID = parseHighestID(data)
 
