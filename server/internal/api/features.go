@@ -46,18 +46,27 @@ type startPage struct {
 	Sections      []startSection `json:"sections"`
 }
 
+// startLocation 是 / 打开的位置：上次、库根或固定文件夹。
+type startLocation struct {
+	Kind     string `json:"kind"`
+	Library  string `json:"library,omitempty"`
+	FolderID int64  `json:"folderId,omitempty"`
+}
+
 type settings struct {
-	Language          string       `json:"language"`
-	Theme             string       `json:"theme"`
-	OpenInNewTab      bool         `json:"openInNewTab"`
-	DefaultSave       *saveTarget  `json:"defaultSave"`
-	RecentSaveTargets []saveTarget `json:"recentSaveTargets"`
-	StartPage         startPage    `json:"startPage"`
+	Language          string        `json:"language"`
+	Theme             string        `json:"theme"`
+	OpenInNewTab      bool          `json:"openInNewTab"`
+	DefaultSave       *saveTarget   `json:"defaultSave"`
+	RecentSaveTargets []saveTarget  `json:"recentSaveTargets"`
+	StartLocation     startLocation `json:"startLocation"`
+	StartPage         startPage     `json:"startPage"`
 }
 
 func defaultSettings() *settings {
 	return &settings{Language: "auto", Theme: "system", RecentSaveTargets: []saveTarget{},
-		StartPage: startPage{ShowSearch: true, ShowRecent: true, RecentCount: 10, ShowFrequent: true, FrequentCount: 10, Sections: []startSection{}}}
+		StartLocation: startLocation{Kind: "last"},
+		StartPage:     startPage{ShowSearch: true, ShowRecent: true, RecentCount: 10, ShowFrequent: true, FrequentCount: 10, Sections: []startSection{}}}
 }
 
 func (a *API) loadSettings(ctx context.Context, userID int64) (*settings, error) {
@@ -76,6 +85,15 @@ func (a *API) loadSettings(ctx context.Context, userID int64) (*settings, error)
 	}
 	if s.StartPage.Sections == nil {
 		s.StartPage.Sections = []startSection{}
+	}
+	// 旧数据迁移：没有 startLocation 时，把起始页第一段变成固定文件夹，否则用上次位置。
+	if s.StartLocation.Kind == "" {
+		if len(s.StartPage.Sections) > 0 {
+			sec := s.StartPage.Sections[0]
+			s.StartLocation = startLocation{Kind: "folder", Library: sec.Library, FolderID: sec.FolderID}
+		} else {
+			s.StartLocation = startLocation{Kind: "last"}
+		}
 	}
 	return s, nil
 }
@@ -117,11 +135,12 @@ func (a *API) checkTarget(ctx context.Context, userID int64, field string, t sav
 
 func (a *API) updateSettings(w http.ResponseWriter, r *http.Request, p *auth.Principal) error {
 	var body struct {
-		Language     *string         `json:"language"`
-		Theme        *string         `json:"theme"`
-		OpenInNewTab *bool           `json:"openInNewTab"`
-		DefaultSave  opt[saveTarget] `json:"defaultSave"`
-		StartPage    *startPage      `json:"startPage"`
+		Language      *string         `json:"language"`
+		Theme         *string         `json:"theme"`
+		OpenInNewTab  *bool           `json:"openInNewTab"`
+		DefaultSave   opt[saveTarget] `json:"defaultSave"`
+		StartLocation *startLocation  `json:"startLocation"`
+		StartPage     *startPage      `json:"startPage"`
 	}
 	if err := decode(r, &body); err != nil {
 		return err
@@ -159,6 +178,22 @@ func (a *API) updateSettings(w http.ResponseWriter, r *http.Request, p *auth.Pri
 			}
 			t := body.DefaultSave.V
 			s.DefaultSave = &t
+		}
+	}
+	if sl := body.StartLocation; sl != nil {
+		switch sl.Kind {
+		case "last", "root":
+			s.StartLocation = startLocation{Kind: sl.Kind}
+		case "folder":
+			if sl.FolderID < 0 {
+				return validation("startLocation.folderId", "folderId 不合法")
+			}
+			if err := a.checkTarget(ctx, p.User.ID, "startLocation", saveTarget{Library: sl.Library, FolderID: sl.FolderID}); err != nil {
+				return err
+			}
+			s.StartLocation = startLocation{Kind: "folder", Library: sl.Library, FolderID: sl.FolderID}
+		default:
+			return validation("startLocation.kind", "kind 只能是 last、root、folder")
 		}
 	}
 	if sp := body.StartPage; sp != nil {

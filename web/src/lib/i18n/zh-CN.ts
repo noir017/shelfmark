@@ -6,6 +6,7 @@ export default {
   'nav.add': '收藏',
   'nav.settings': '设置',
   'nav.main': '主导航',
+  'nav.bookmarks': '书签',
 
   'common.ok': '确定',
   'common.cancel': '取消',
@@ -85,6 +86,8 @@ export default {
   'search.local': '离线结果（本地搜索）',
   'search.total': '共 {n} 条',
   'search.none': '没有找到匹配的书签',
+  'search.all': '搜全部',
+  'search.backFolder': '返回文件夹',
 
   'tree.label': '文件夹',
   'tree.expand': '展开',
@@ -111,6 +114,7 @@ export default {
   'manager.export': '导入导出',
   'manager.breadcrumb': '当前位置',
   'manager.filter': '筛选当前文件夹',
+  'manager.items': '{n} 项',
   'manager.selectAll': '全选',
   'manager.select': '选择 {title}',
   'manager.selected': '已选 {n} 项',
@@ -292,6 +296,11 @@ export default {
   'account.defaultSave': '默认收藏位置',
   'account.defaultSaveHint': '快速收藏（分享、插件、书签小工具）不指定位置时存到这里；不设置则存到 bookmarks 库的“收件箱”。',
   'account.useDefaultSave': '指定默认位置',
+  'account.startLocation': '启动位置',
+  'account.startLocationHint': '打开 / 时进入的文件夹；选“上次位置”会记住每台设备最后浏览的地方。',
+  'account.startLast': '上次位置',
+  'account.startRoot': '库根目录',
+  'account.startFolder': '指定文件夹',
 
   'devices.addFloccus': '添加 Floccus 设备',
   'devices.addToken': '添加插件/脚本令牌',

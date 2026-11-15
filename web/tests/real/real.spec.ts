@@ -1,12 +1,12 @@
 // 对真实二进制跑的关键流程。每条用例建自己的库，互不影响；界面操作后再用 API 核对服务端状态。
 import { expect, test, type Page } from '@playwright/test'
-import { row, rowMenu } from '../e2e/helpers'
+import { newBookmark, newFolder, row, rowMenu } from '../e2e/helpers'
 
 type Node = { id: number; type: string; title: string; url?: string | null; tags: string[]; children?: Node[] }
 
 async function login(page: Page) {
   await page.goto('/')
-  await expect(page.getByTestId('start-search')).toBeVisible()
+  await expect(page.getByTestId('workspace-search')).toBeVisible()
 }
 
 /** 用页面的同源请求调 API */
@@ -29,18 +29,8 @@ test('登录后建文件夹、建书签、行内编辑、删除并撤销', async
   const slug = await newLibrary(page, '建改删')
   await page.goto(`/lib/${slug}`)
 
-  await page.getByTestId('new-folder').click()
-  await page.getByTestId('confirm-dialog').locator('input').fill('测试文件夹')
-  await page.getByRole('button', { name: '创建' }).click()
-  await expect(row(page, '测试文件夹')).toBeVisible()
-
-  await page.getByTestId('new-bookmark').click()
-  const dlg = page.getByTestId('item-dialog')
-  await dlg.locator('input[name=url]').fill('https://example.net/page')
-  await dlg.locator('input[name=title]').fill('Example Net')
-  await dlg.locator('input[name=tags]').fill('e2e, 测试')
-  await dlg.getByRole('button', { name: '保存' }).click()
-  await expect(row(page, 'Example Net')).toBeVisible()
+  await newFolder(page, '测试文件夹')
+  await newBookmark(page, 'https://example.net/page', 'Example Net', 'e2e, 测试')
   await expect(row(page, 'Example Net').getByText('#e2e')).toBeVisible()
 
   await rowMenu(page, 'Example Net', '编辑')

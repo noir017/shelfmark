@@ -16,6 +16,15 @@
   let defLib = $state(app.settings?.defaultSave?.library ?? defaultLibrary() ?? 'bookmarks')
   let defFolder = $state<number | null>(app.settings?.defaultSave?.folderId ?? 0)
 
+  let startKind = $state<Settings['startLocation']['kind']>(app.settings?.startLocation?.kind ?? 'last')
+  let startLib = $state(app.settings?.startLocation?.library ?? defaultLibrary() ?? 'bookmarks')
+  let startFolder = $state<number | null>(app.settings?.startLocation?.folderId ?? 0)
+
+  function saveStart() {
+    if (startKind === 'folder') patch({ startLocation: { kind: 'folder', library: startLib, folderId: startFolder ?? 0 } })
+    else patch({ startLocation: { kind: startKind } })
+  }
+
   async function patch(p: Partial<Settings>) {
     try {
       await saveSettings(p)
@@ -51,6 +60,25 @@
       <input type="checkbox" checked={s.openInNewTab} onchange={(e) => patch({ openInNewTab: (e.currentTarget as HTMLInputElement).checked })} />
       <span>{t('account.newTab')}</span>
     </label>
+  </div>
+
+  <div class="card">
+    <h2>{t('account.startLocation')}</h2>
+    <p class="hint">{t('account.startLocationHint')}</p>
+    <label class="field">
+      <span>{t('account.startLocation')}</span>
+      <select bind:value={startKind}>
+        <option value="last">{t('account.startLast')}</option>
+        <option value="root">{t('account.startRoot')}</option>
+        <option value="folder">{t('account.startFolder')}</option>
+      </select>
+    </label>
+    {#if startKind === 'folder'}
+      <FolderPicker bind:library={startLib} bind:folderId={startFolder} />
+    {/if}
+    <div class="row" style="margin-top: 10px">
+      <button class="btn primary" onclick={saveStart}>{t('common.save')}</button>
+    </div>
   </div>
 
   <div class="card">

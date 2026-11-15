@@ -85,7 +85,6 @@ test('settings login → popup save → badge → new tab (online and offline)',
     const nt = await context.newPage();
     await test.step('new tab renders bookmarks from the API with favicons', async () => {
       await nt.goto(`${base}/newtab.html`);
-      await expect(nt.locator('.group[data-id="recent"] .tile', { hasText: 'Hello Edited' })).toBeVisible();
       const tools = nt.locator('.group', { has: nt.locator('h2', { hasText: '工具' }) });
       await expect(tools.locator('.tile', { hasText: 'Example Tools' })).toBeVisible();
       await expect(tools.locator('.tile', { hasText: 'Example Tools' }).locator('img')).toHaveAttribute('src', /^blob:/);

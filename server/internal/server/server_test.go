@@ -510,6 +510,22 @@ func TestWebFlowRevisionsAndRestore(t *testing.T) {
 	e.expect(e.api("GET", "/api/v1/tags", nil), 200)
 	e.expect(e.api("PATCH", "/api/v1/settings", map[string]any{"theme": "dark", "defaultSave": map[string]any{"library": "bookmarks", "folderId": folder.Item.ID}}), 200)
 	e.expect(e.api("PATCH", "/api/v1/settings", map[string]any{"theme": "neon"}), 422)
+	var st struct {
+		StartLocation struct {
+			Kind     string
+			Library  string
+			FolderID int64
+		}
+	}
+	e.expect(e.api("PATCH", "/api/v1/settings", map[string]any{"startLocation": map[string]any{"kind": "folder", "library": "bookmarks", "folderId": folder.Item.ID}}), 200).json(t, &st)
+	if st.StartLocation.Kind != "folder" || st.StartLocation.Library != "bookmarks" || st.StartLocation.FolderID != folder.Item.ID {
+		t.Fatalf("startLocation %+v", st.StartLocation)
+	}
+	e.expect(e.api("PATCH", "/api/v1/settings", map[string]any{"startLocation": map[string]any{"kind": "last"}}), 200).json(t, &st)
+	if st.StartLocation.Kind != "last" {
+		t.Fatalf("startLocation last %+v", st.StartLocation)
+	}
+	e.expect(e.api("PATCH", "/api/v1/settings", map[string]any{"startLocation": map[string]any{"kind": "folder", "library": "bookmarks", "folderId": 999999}}), 422)
 	e.expect(e.api("GET", "/api/v1/settings", nil), 200)
 	e.expect(e.api("GET", "/api/v1/jobs", nil), 200)
 	e.expect(e.api("POST", "/api/v1/jobs/cleanup/run", nil), 202)

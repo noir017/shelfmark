@@ -2,8 +2,9 @@
   import { client, unwrap } from '../api'
   import { AccessExpiredError, NetworkError } from '../api/client'
   import type { AiSuggestion, ItemWithPath, QuickSaveRequest, QuickSaveResult } from '../api/types'
-  import FolderPicker from '../components/FolderPicker.svelte'
-  import Icon from '../components/Icon.svelte'
+  import Dialog from './Dialog.svelte'
+  import FolderPicker from './FolderPicker.svelte'
+  import Icon from './Icon.svelte'
   import { t } from '../lib/i18n/index.svelte'
   import { enqueueSave } from '../lib/offline/queue'
   import { app, defaultLibrary, errorText, refreshQueueCount } from '../lib/stores/app.svelte'
@@ -11,19 +12,32 @@
   import { parseTags } from '../lib/tags'
   import { extractUrl, isHttpUrl } from '../lib/url'
 
-  let { query }: { params: Record<string, string>; query: URLSearchParams } = $props()
+  let {
+    initialUrl = '',
+    initialTitle = '',
+    initialText = '',
+    initialLibrary = '',
+    initialFolderId = null,
+    onclose,
+    onsaved,
+  }: {
+    initialUrl?: string
+    initialTitle?: string
+    initialText?: string
+    initialLibrary?: string
+    initialFolderId?: number | null
+    onclose: () => void
+    onsaved?: (r: QuickSaveResult) => void
+  } = $props()
 
-  const qUrl = query.get('url')?.trim() ?? ''
-  const qTitle = query.get('title')?.trim() ?? ''
-  const qText = query.get('text')?.trim() ?? ''
-  const found = qUrl || extractUrl(qText) || extractUrl(qTitle) || ''
-  const textRest = qText.replace(found, '').trim()
-
+  const found = initialUrl.trim() || extractUrl(initialText) || extractUrl(initialTitle) || ''
+  const textRest = initialText.replace(found, '').trim()
   const def = app.settings?.defaultSave ?? null
+
   let url = $state(found)
-  let title = $state(qTitle && qTitle !== found ? qTitle : textRest)
-  let library = $state(def?.library ?? defaultLibrary() ?? 'bookmarks')
-  let folderId = $state<number | null>(def?.folderId ?? null)
+  let title = $state(initialTitle && initialTitle !== found ? initialTitle : textRest)
+  let lib = $state(initialLibrary || def?.library || defaultLibrary() || 'bookmarks')
+  let folderId = $state<number | null>(initialFolderId ?? def?.folderId ?? null)
   let tags = $state('')
   let notes = $state('')
   let existing = $state<ItemWithPath[]>([])
@@ -35,7 +49,6 @@
 
   const recent = $derived(app.settings?.recentSaveTargets ?? [])
 
-  // 已收藏提示
   let lookupTimer: ReturnType<typeof setTimeout>
   $effect(() => {
     const u = url.trim()
@@ -55,8 +68,8 @@
     if (!app.info?.features.ai || !app.online || !isHttpUrl(url.trim())) return
     aiLoading = true
     try {
-      ai = await unwrap(client.POST('/api/v1/ai/suggest', { body: { library, url: url.trim(), title: title || undefined } }))
-      void loadTree(library)
+      ai = await unwrap(client.POST('/api/v1/ai/suggest', { body: { library: lib, url: url.trim(), title: title || undefined } }))
+      void loadTree(lib)
     } catch {
       ai = null
     } finally {
@@ -77,7 +90,7 @@
     error = ''
     const u = url.trim()
     if (!isHttpUrl(u) && !/^[a-z][a-z0-9+.-]*:/i.test(u)) return (error = t('share.badUrl'))
-    const req: QuickSaveRequest = { url: u, library }
+    const req: QuickSaveRequest = { url: u, library: lib }
     if (title.trim()) req.title = title.trim()
     if (folderId !== null) req.parentId = folderId
     if (notes.trim()) req.notes = notes.trim()
@@ -87,6 +100,7 @@
     try {
       result = await unwrap(client.POST('/api/v1/quick-save', { body: req }))
       status = result.existed ? 'existed' : 'saved'
+      onsaved?.(result)
     } catch (err) {
       if (err instanceof NetworkError) {
         await enqueueSave(req)
@@ -111,14 +125,11 @@
   }
 
   const libName = (s: string) => app.libraries.find((l) => l.slug === s)?.name ?? s
-  const canClose = typeof window !== 'undefined' && !!window.opener
 </script>
 
-<div class="page narrow">
-  <h1><Icon name="bookmark-plus" size={22} /> {t('share.title')}</h1>
-
+<Dialog title={t('share.title')} {onclose} wide testid="save-sheet">
   {#if status === 'saved' || status === 'existed' || status === 'queued'}
-    <div class="card done" data-testid="share-result">
+    <div class="done" data-testid="share-result">
       {#if status === 'queued'}
         <p><Icon name="offline" /> {t('share.queued')}</p>
       {:else if result}
@@ -130,21 +141,21 @@
       {/if}
       <div class="row">
         {#if result}
-          <a class="btn" href="/lib/{result.library}{result.item.parentId ? '/f/' + result.item.parentId : ''}">{t('share.view')}</a>
+          <a class="btn" href="/lib/{result.library}{result.item.parentId ? '/f/' + result.item.parentId : ''}" onclick={onclose}>{t('share.view')}</a>
         {/if}
         <button class="btn" onclick={reset}>{t('share.another')}</button>
-        {#if canClose}<button class="btn primary" onclick={() => window.close()}>{t('common.close')}</button>{/if}
+        <button class="btn primary" onclick={onclose}>{t('common.close')}</button>
       </div>
     </div>
   {:else}
-    <form class="card" onsubmit={save} data-testid="share-form">
+    <form class="form" onsubmit={save} data-testid="share-form">
       {#if existing.length}
         <div class="exists" role="status" data-testid="already-saved">
           <Icon name="info" />
           <div>
             <b>{t('share.alreadySaved')}</b>
             {#each existing as m (m.library + m.item.id)}
-              <div><a href="/lib/{m.library}{m.item.parentId ? '/f/' + m.item.parentId : ''}">{libName(m.library)}{m.path.length ? ' / ' + m.path.join(' / ') : ''}</a> · {m.item.title}</div>
+              <div><a href="/lib/{m.library}{m.item.parentId ? '/f/' + m.item.parentId : ''}" onclick={onclose}>{libName(m.library)}{m.path.length ? ' / ' + m.path.join(' / ') : ''}</a> · {m.item.title}</div>
             {/each}
           </div>
         </div>
@@ -188,7 +199,7 @@
 
       <div class="field">
         <span>{t('share.location')}</span>
-        <FolderPicker bind:library bind:folderId inboxOption {recent} />
+        <FolderPicker bind:library={lib} bind:folderId inboxOption {recent} />
       </div>
       <label class="field">
         <span>{t('field.tags')}</span>
@@ -203,13 +214,13 @@
       <button class="btn primary full" type="submit" disabled={status === 'saving'} data-testid="share-save">{t('share.save')}</button>
     </form>
   {/if}
-</div>
+</Dialog>
 
 <style>
-  h1 {
+  .form {
     display: flex;
-    gap: 8px;
-    align-items: center;
+    flex-direction: column;
+    gap: 12px;
   }
   input,
   textarea {
@@ -224,7 +235,6 @@
     background: var(--warn-bg);
     border-radius: var(--radius);
     padding: 10px 12px;
-    margin-bottom: 12px;
     font-size: 0.92rem;
   }
   .ai {
@@ -234,7 +244,6 @@
     background: var(--surface-2);
     border-radius: var(--radius);
     padding: 10px 12px;
-    margin-bottom: 12px;
   }
   .done p {
     display: flex;

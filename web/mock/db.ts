@@ -149,6 +149,7 @@ export function defaultSettings(): Settings {
     openInNewTab: false,
     defaultSave: null,
     recentSaveTargets: [],
+    startLocation: { kind: 'last' },
     startPage: defaultStartPage(),
   }
 }

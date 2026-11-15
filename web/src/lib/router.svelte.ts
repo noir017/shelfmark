@@ -12,13 +12,13 @@ export interface RouteDef {
 }
 
 export const routes: RouteDef[] = [
-  { name: 'start', pattern: '/', load: () => import('../pages/StartPage.svelte') },
-  { name: 'manager', pattern: '/lib', load: () => import('../pages/Manager.svelte') },
-  { name: 'manager', pattern: '/lib/:slug', load: () => import('../pages/Manager.svelte') },
-  { name: 'manager', pattern: '/lib/:slug/f/:folderId', load: () => import('../pages/Manager.svelte') },
-  { name: 'search', pattern: '/search', load: () => import('../pages/Search.svelte') },
-  { name: 'share', pattern: '/share', load: () => import('../pages/Share.svelte') },
-  { name: 'share', pattern: '/add', load: () => import('../pages/Share.svelte') },
+  { name: 'workspace', pattern: '/', load: () => import('../pages/Workspace.svelte') },
+  { name: 'workspace', pattern: '/lib', load: () => import('../pages/Workspace.svelte') },
+  { name: 'workspace', pattern: '/lib/:slug', load: () => import('../pages/Workspace.svelte') },
+  { name: 'workspace', pattern: '/lib/:slug/f/:folderId', load: () => import('../pages/Workspace.svelte') },
+  { name: 'workspace', pattern: '/search', load: () => import('../pages/Workspace.svelte') },
+  { name: 'workspace', pattern: '/share', load: () => import('../pages/Workspace.svelte') },
+  { name: 'workspace', pattern: '/add', load: () => import('../pages/Workspace.svelte') },
   { name: 'history', pattern: '/history/:slug', load: () => import('../pages/History.svelte') },
   { name: 'deleted', pattern: '/deleted/:slug', load: () => import('../pages/Deleted.svelte') },
   { name: 'pending', pattern: '/pending/:slug/:id', load: () => import('../pages/Pending.svelte') },

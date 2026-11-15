@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test'
-import { login, mock, reset, row, rowMenu, touchDrag } from './helpers'
+import { login, mock, newBookmark, newFolder, openNew, reset, row, rowMenu, touchDrag } from './helpers'
 
 test.beforeEach(async ({ request }) => reset(request))
 
@@ -7,18 +7,8 @@ test('建文件夹、建书签、行内编辑、删除并撤销', async ({ page 
   await login(page, '/lib/bookmarks')
   await expect(row(page, '常用')).toBeVisible()
 
-  await page.getByTestId('new-folder').click()
-  await page.getByTestId('confirm-dialog').locator('input').fill('测试文件夹')
-  await page.getByRole('button', { name: '创建' }).click()
-  await expect(row(page, '测试文件夹')).toBeVisible()
-
-  await page.getByTestId('new-bookmark').click()
-  const dlg = page.getByTestId('item-dialog')
-  await dlg.locator('input[name=url]').fill('https://example.net/page')
-  await dlg.locator('input[name=title]').fill('Example Net')
-  await dlg.locator('input[name=tags]').fill('e2e, 测试')
-  await dlg.getByRole('button', { name: '保存' }).click()
-  await expect(row(page, 'Example Net')).toBeVisible()
+  await newFolder(page, '测试文件夹')
+  await newBookmark(page, 'https://example.net/page', 'Example Net', 'e2e, 测试')
   await expect(row(page, 'Example Net').getByText('#e2e')).toBeVisible()
 
   await rowMenu(page, 'Example Net', '编辑')
@@ -52,6 +42,7 @@ test('鼠标拖放：把书签拖进文件夹', async ({ page }) => {
 
 test('触屏拖放：用手柄把书签排到最前', async ({ page }) => {
   await login(page, '/lib/bookmarks')
+  await expect(row(page, 'Example Domain')).toBeVisible()
   await touchDrag(page, '[data-testid=item-row][data-title="Example Domain"]', '[data-testid=item-row][data-title="常用"]', 0.1)
   await expect(page.getByTestId('item-row').first()).toHaveAttribute('data-title', 'Example Domain')
 })
@@ -71,7 +62,7 @@ test('多选批量移动', async ({ page }) => {
 test('423：库被 Floccus 锁定时提示并自动重试', async ({ page, request }) => {
   await login(page, '/lib/bookmarks')
   await mock(request, 'lock', { library: 'bookmarks', durationMs: 1500, actor: 'Floccus · 笔记本' })
-  await page.getByTestId('new-folder').click()
+  await openNew(page, '新建文件夹')
   await page.getByTestId('confirm-dialog').locator('input').fill('锁后新建')
   await page.getByRole('button', { name: '创建' }).click()
   await expect(page.getByTestId('toast').filter({ hasText: '正在与 Floccus · 笔记本 同步' })).toBeVisible()

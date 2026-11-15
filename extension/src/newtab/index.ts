@@ -1,6 +1,6 @@
 import { createApi, type Api } from '../api/client';
 import { readSnapshot, refreshSnapshot, type Snapshot } from '../lib/data';
-import { readDiscovery, refreshDiscovery, type Discovery, type Link } from '../lib/discovery';
+import type { Link } from '../lib/discovery';
 import { byId, h, show } from '../lib/dom';
 import { describeError, isOfflineError } from '../lib/errors';
 import { ext } from '../lib/ext';
@@ -21,7 +21,6 @@ class NewTab {
   private readonly api: Api | null;
   private readonly favicons: FaviconLoader | null;
   private snapshot: Snapshot | null = null;
-  private discovery: Discovery | undefined;
   private collapsed: Record<string, boolean> = {};
   private hits: Hit[] = [];
   private active = -1;
@@ -55,11 +54,9 @@ class NewTab {
     }
     this.collapsed = (await readCache<Record<string, boolean>>(area, COLLAPSED_KEY)) ?? {};
     this.snapshot = await readSnapshot(area);
-    this.discovery = await readDiscovery(area);
     this.render();
     try {
       this.snapshot = await refreshSnapshot(this.api, area);
-      if (this.mode === 'bookmarks') this.discovery = await refreshDiscovery(this.api, area, this.snapshot);
       show(this.banner, false);
       this.render();
     } catch (err) {
@@ -89,9 +86,8 @@ class NewTab {
   private render(): void {
     this.applyTheme();
     if (this.mode !== 'bookmarks' || !this.snapshot) return;
-    const showSearch = this.snapshot.settings?.startPage.showSearch ?? true;
-    show(byId('search-form'), showSearch);
-    const groups = buildGroups(this.snapshot, this.discovery, { recent: t('newtabRecent'), frequent: t('newtabFrequent') });
+    show(byId('search-form'), true);
+    const groups = buildGroups(this.snapshot);
     this.observer.disconnect();
     this.content.replaceChildren(...groups.map((g) => this.renderGroup(g)));
     show(this.hint, groups.length === 0);

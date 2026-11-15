@@ -1791,9 +1791,17 @@ components:
           maxItems: 50
           items: { $ref: '#/components/schemas/StartSection' }
 
+    StartLocation:
+      type: object
+      required: [kind]
+      properties:
+        kind: { type: string, enum: [last, root, folder], description: last=上次位置，root=库根，folder=固定文件夹 }
+        library: { $ref: '#/components/schemas/Slug' }
+        folderId: { type: integer, format: int64 }
+
     Settings:
       type: object
-      required: [language, theme, openInNewTab, defaultSave, recentSaveTargets, startPage]
+      required: [language, theme, openInNewTab, defaultSave, recentSaveTargets, startLocation]
       properties:
         language: { type: string, enum: [auto, zh-CN, en] }
         theme: { type: string, enum: [system, light, dark] }
@@ -1804,7 +1812,11 @@ components:
           maxItems: 10
           description: 最近收藏到的位置，服务端在每次 quick-save 后更新
           items: { $ref: '#/components/schemas/SaveTarget' }
-        startPage: { $ref: '#/components/schemas/StartPage' }
+        startLocation: { $ref: '#/components/schemas/StartLocation' }
+        startPage:
+          allOf: [{ $ref: '#/components/schemas/StartPage' }]
+          deprecated: true
+          description: 旧版插件仍在读；新客户端用 startLocation
 
     SettingsPatch:
       type: object
@@ -1813,7 +1825,10 @@ components:
         theme: { type: string, enum: [system, light, dark] }
         openInNewTab: { type: boolean }
         defaultSave: { oneOf: [{ $ref: '#/components/schemas/SaveTarget' }, { type: 'null' }] }
-        startPage: { $ref: '#/components/schemas/StartPage' }
+        startLocation: { $ref: '#/components/schemas/StartLocation' }
+        startPage:
+          allOf: [{ $ref: '#/components/schemas/StartPage' }]
+          deprecated: true
 
     AiStatus:
       type: object

@@ -1378,6 +1378,16 @@ export interface components {
             frequentCount: number;
             sections: components["schemas"]["StartSection"][];
         };
+        StartLocation: {
+            /**
+             * @description last=上次位置，root=库根，folder=固定文件夹
+             * @enum {string}
+             */
+            kind: "last" | "root" | "folder";
+            library?: components["schemas"]["Slug"];
+            /** Format: int64 */
+            folderId?: number;
+        };
         Settings: {
             /** @enum {string} */
             language: "auto" | "zh-CN" | "en";
@@ -1387,7 +1397,12 @@ export interface components {
             defaultSave: components["schemas"]["SaveTarget"] | null;
             /** @description 最近收藏到的位置，服务端在每次 quick-save 后更新 */
             recentSaveTargets: components["schemas"]["SaveTarget"][];
-            startPage: components["schemas"]["StartPage"];
+            startLocation: components["schemas"]["StartLocation"];
+            /**
+             * @deprecated
+             * @description 旧版插件仍在读；新客户端用 startLocation
+             */
+            startPage?: components["schemas"]["StartPage"];
         };
         SettingsPatch: {
             /** @enum {string} */
@@ -1396,6 +1411,8 @@ export interface components {
             theme?: "system" | "light" | "dark";
             openInNewTab?: boolean;
             defaultSave?: components["schemas"]["SaveTarget"] | null;
+            startLocation?: components["schemas"]["StartLocation"];
+            /** @deprecated */
             startPage?: components["schemas"]["StartPage"];
         };
         AiStatus: {

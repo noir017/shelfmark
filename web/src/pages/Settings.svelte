@@ -2,6 +2,7 @@
   import type { Component } from 'svelte'
   import Icon from '../components/Icon.svelte'
   import { t, type Key } from '../lib/i18n/index.svelte'
+  import { navigate } from '../lib/router.svelte'
   import { app, logout } from '../lib/stores/app.svelte'
 
   let { params }: { params: Record<string, string>; query: URLSearchParams } = $props()
@@ -11,12 +12,15 @@
     { id: 'account', icon: 'user', label: 'settings.account', load: () => import('./settings/Account.svelte') },
     { id: 'devices', icon: 'devices', label: 'settings.devices', load: () => import('./settings/Devices.svelte') },
     { id: 'libraries', icon: 'library', label: 'settings.libraries', load: () => import('./settings/Libraries.svelte') },
-    { id: 'startpage', icon: 'home', label: 'settings.startpage', load: () => import('./settings/StartPageSettings.svelte') },
     { id: 'import-export', icon: 'upload', label: 'settings.importExport', load: () => import('./settings/ImportExport.svelte') },
     { id: 'integrations', icon: 'puzzle', label: 'settings.integrations', load: () => import('./settings/Integrations.svelte') },
     { id: 'users', icon: 'key', label: 'settings.users', load: () => import('./settings/Users.svelte'), admin: true },
     { id: 'about', icon: 'info', label: 'settings.about', load: () => import('./settings/About.svelte') },
   ]
+
+  $effect(() => {
+    if (params.section === 'startpage') navigate('/settings/account', { replace: true })
+  })
 
   const visible = $derived(SECTIONS.filter((s) => !s.admin || app.me?.user.isAdmin))
   let wide = $state(typeof matchMedia !== 'undefined' ? matchMedia('(min-width: 900px)').matches : true)
@@ -49,6 +53,7 @@
   {#if wide || !current}
     <nav class="side" aria-label={t('nav.settings')}>
       <h1 class="narrow-only">{t('nav.settings')}</h1>
+      <a href="/lib"><Icon name="arrowLeft" size={17} /> {t('nav.bookmarks')}</a>
       {#each visible as s (s.id)}
         <a href="/settings/{s.id}" class:on={current?.id === s.id}><Icon name={s.icon} size={17} /> {t(s.label)}</a>
       {/each}

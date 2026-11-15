@@ -1,5 +1,5 @@
 import { findFolder, walkBookmarks, type Node, type Snapshot } from '../lib/data';
-import type { Discovery, Link } from '../lib/discovery';
+import type { Link } from '../lib/discovery';
 
 export type Entry = { kind: 'link'; link: Link } | { kind: 'folder'; id: string; title: string; entries: Entry[] };
 
@@ -30,55 +30,30 @@ export function entriesOf(library: string, nodes: readonly Node[], depth = 0): E
 }
 
 /**
- * What the bookmark page shows, following the server's start page settings:
- * recent / frequent rows, then the configured folder sections. Without sections every
- * library's root bookmarks and top-level folders become groups.
+ * 新标签页只显示一个位置：startLocation 指定的文件夹，或第一个库的根。
+ * 最近/常用和多段起始页配置已去掉，搜索框常驻。
  */
-export function buildGroups(s: Snapshot, d: Discovery | undefined, labels: { recent: string; frequent: string }): Group[] {
-  const sp = s.settings?.startPage;
-  const groups: Group[] = [];
-  const links = (list: Link[]): Entry[] => list.map((link) => ({ kind: 'link', link }));
-  if (sp?.showRecent && d?.recent.length)
-    groups.push({ id: 'recent', title: labels.recent, layout: 'grid', collapsed: false, entries: links(d.recent) });
-  if (sp?.showFrequent && d?.frequent.length)
-    groups.push({ id: 'frequent', title: labels.frequent, layout: 'grid', collapsed: false, entries: links(d.frequent) });
-
-  const sections = sp?.sections ?? [];
-  if (sections.length) {
-    for (const sec of sections) {
-      const tree = s.trees[sec.library];
-      if (!tree) continue;
-      const folder = sec.folderId === 0 ? null : findFolder(tree.children, sec.folderId);
-      if (sec.folderId !== 0 && !folder) continue;
-      const libName = s.libraries.find((l) => l.slug === sec.library)?.name ?? sec.library;
-      groups.push({
-        id: `section:${sec.id}`,
-        title: sec.title || folder?.title || libName,
-        layout: sec.layout,
-        collapsed: sec.collapsed,
-        entries: entriesOf(sec.library, folder ? (folder.children ?? []) : tree.children),
-      });
-    }
-    return groups;
+export function buildGroups(s: Snapshot): Group[] {
+  const sl = s.settings?.startLocation;
+  let library = '';
+  let folderId = 0;
+  if (sl?.kind === 'folder' && sl.library && s.trees[sl.library]) {
+    library = sl.library;
+    folderId = sl.folderId ?? 0;
+  } else {
+    library = s.libraries[0]?.slug ?? '';
   }
-
-  for (const lib of s.libraries) {
-    const tree = s.trees[lib.slug];
-    if (!tree) continue;
-    const rootLinks = entriesOf(lib.slug, tree.children.filter((n) => n.type === 'bookmark'));
-    if (rootLinks.length) groups.push({ id: `${lib.slug}:0`, title: lib.name, layout: 'grid', collapsed: false, entries: rootLinks });
-    for (const f of tree.children) {
-      if (f.type !== 'folder') continue;
-      groups.push({
-        id: `${lib.slug}:${f.id}`,
-        title: s.libraries.length > 1 ? `${lib.name} / ${f.title}` : f.title,
-        layout: 'grid',
-        collapsed: false,
-        entries: entriesOf(lib.slug, f.children ?? [], 1),
-      });
-    }
-  }
-  return groups;
+  const tree = s.trees[library];
+  if (!tree) return [];
+  const folder = folderId ? findFolder(tree.children, folderId) : null;
+  const title = folder?.title ?? s.libraries.find((l) => l.slug === library)?.name ?? library;
+  return [{
+    id: `${library}:${folderId}`,
+    title,
+    layout: 'grid',
+    collapsed: false,
+    entries: entriesOf(library, folder ? (folder.children ?? []) : tree.children),
+  }];
 }
 
 export interface Hit {

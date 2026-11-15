@@ -7,6 +7,7 @@ const en: Record<keyof typeof zh, string> = {
   'nav.add': 'Save',
   'nav.settings': 'Settings',
   'nav.main': 'Main navigation',
+  'nav.bookmarks': 'Bookmarks',
 
   'common.ok': 'OK',
   'common.cancel': 'Cancel',
@@ -86,6 +87,8 @@ const en: Record<keyof typeof zh, string> = {
   'search.local': 'Offline results (local search)',
   'search.total': '{n} results',
   'search.none': 'No matching bookmarks',
+  'search.all': 'Search all',
+  'search.backFolder': 'Back to folder',
 
   'tree.label': 'Folders',
   'tree.expand': 'Expand',
@@ -112,6 +115,7 @@ const en: Record<keyof typeof zh, string> = {
   'manager.export': 'Import / export',
   'manager.breadcrumb': 'Current location',
   'manager.filter': 'Filter this folder',
+  'manager.items': '{n} items',
   'manager.selectAll': 'Select all',
   'manager.select': 'Select {title}',
   'manager.selected': '{n} selected',
@@ -293,6 +297,11 @@ const en: Record<keyof typeof zh, string> = {
   'account.defaultSave': 'Default save location',
   'account.defaultSaveHint': 'Quick saves (share, extension, bookmarklet) without a location go here; if unset they go to “Inbox” in the bookmarks library.',
   'account.useDefaultSave': 'Use a default location',
+  'account.startLocation': 'Start location',
+  'account.startLocationHint': 'The folder opened at /; “Last location” remembers where each device left off.',
+  'account.startLast': 'Last location',
+  'account.startRoot': 'Library root',
+  'account.startFolder': 'Fixed folder',
 
   'devices.addFloccus': 'Add Floccus device',
   'devices.addToken': 'Add extension/script token',

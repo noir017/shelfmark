@@ -785,6 +785,15 @@ export function createHandlers(getDb: () => MockDB): HttpHandler[] {
         if (b.defaultSave) db().lib(c.user.id, b.defaultSave.library)
         s.defaultSave = b.defaultSave
       }
+      if (b.startLocation !== undefined) {
+        const sl = b.startLocation
+        if (!['last', 'root', 'folder'].includes(sl.kind)) throw fail(422, 'validation', 'startLocation.kind 不合法', { 'startLocation.kind': 'enum' })
+        if (sl.kind === 'folder') {
+          if (!sl.library) throw fail(422, 'validation', 'startLocation.library 不合法', { 'startLocation.library': 'invalid' })
+          db().lib(c.user.id, sl.library)
+        }
+        s.startLocation = sl.kind === 'folder' ? { kind: 'folder', library: sl.library, folderId: sl.folderId ?? 0 } : { kind: sl.kind }
+      }
       if (b.startPage !== undefined) s.startPage = validateStartPage(b.startPage)
       return s
     }),

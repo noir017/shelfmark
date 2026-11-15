@@ -388,7 +388,7 @@ body.dragging * {
 
 @media (max-width: 899px) {
   :root {
-    --bottom-nav-h: 58px;
+    --bottom-nav-h: 0px;
   }
   .page {
     padding: 12px 12px calc(28px + var(--bottom-nav-h));

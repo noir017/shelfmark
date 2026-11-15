@@ -1,31 +1,32 @@
 import { expect, test } from '@playwright/test'
-import { login, mock, reset } from './helpers'
+import { login, mock, reset, row } from './helpers'
 
 test.beforeEach(async ({ request }) => reset(request))
 
 test('内网直接进入，没有登录页', async ({ page }) => {
   await page.goto('/lib/bookmarks')
   await expect(page).toHaveURL(/\/lib\/bookmarks$/)
-  await expect(page.getByTestId('start-search')).toHaveCount(0)
+  await expect(page.getByTestId('workspace-search')).toBeVisible()
   await page.goto('/')
-  await expect(page.getByTestId('start-search')).toBeVisible()
+  await expect(page.getByTestId('workspace-search')).toBeVisible()
 })
 
-test('起始页自动分组显示默认库的顶层文件夹', async ({ page, request }) => {
-  const r = await request.patch('/api/v1/settings', {
-    data: { startPage: { showSearch: true, showRecent: true, recentCount: 8, showFrequent: true, frequentCount: 8, sections: [] } },
-    headers: { 'X-Requested-With': 'shelfmark' },
-  })
-  expect(r.ok()).toBeTruthy()
+test('主工作区根目录和首页记住上次位置', async ({ page }) => {
+  await login(page, '/lib/bookmarks')
+  await expect(page.getByTestId('start-section')).toHaveCount(0)
+  await expect(row(page, '常用')).toBeVisible()
+  await page.locator('[data-testid=item-row][data-title="工具"] a.title').click()
+  await expect(page).toHaveURL(/\/lib\/bookmarks\/f\/\d+$/)
+  await expect(row(page, '在线工具')).toBeVisible()
   await page.goto('/')
-  await expect(page.getByTestId('start-section')).toHaveCount(4)
-  await expect(page.getByTestId('start-section').filter({ hasText: '工具' })).toBeVisible()
+  await expect(row(page, '在线工具')).toBeVisible()
+  await expect(page.locator('.bottomnav')).toHaveCount(0)
 })
 
 test('搜索语法', async ({ page }) => {
   await login(page)
-  await page.getByTestId('start-search').fill('#docs')
-  await page.getByTestId('start-search').press('Enter')
+  await page.getByTestId('workspace-search').fill('#docs')
+  await page.getByTestId('workspace-search').press('Enter')
   await expect(page).toHaveURL(/\/search\?q=%23docs/)
   await expect(page.getByTestId('search-hit').filter({ hasText: 'MDN Web Docs' })).toBeVisible()
   await page.goto('/search?q=is%3Abroken')
@@ -117,7 +118,7 @@ test('设置页：令牌、Floccus 向导、主题和语言', async ({ page }) =
   await expect(page.getByTestId('floccus-result')).toContainText('bookmarks.xbel')
   await page.getByRole('button', { name: '完成' }).click()
 
-  for (const s of ['libraries', 'startpage', 'import-export', 'integrations', 'users', 'about']) {
+  for (const s of ['libraries', 'import-export', 'integrations', 'users', 'about']) {
     await page.goto('/settings/' + s)
     await expect(page.locator('.content h1')).toBeVisible()
   }
@@ -125,17 +126,22 @@ test('设置页：令牌、Floccus 向导、主题和语言', async ({ page }) =
   await page.getByTestId('theme').selectOption('dark')
   await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark')
   await page.getByTestId('language').selectOption('en')
-  await expect(page.locator('.topnav')).toContainText('Settings')
+  await expect(page.locator('.topbar')).toContainText('Bookmarks')
 })
 
 test.describe('窄屏', () => {
   test.use({ viewport: { width: 390, height: 844 }, hasTouch: true })
 
-  test('底部导航、单栏管理器、“移动到…”对话框', async ({ page }) => {
+  test('单页工作区、文件夹抽屉、“移动到…”对话框', async ({ page }) => {
     await login(page, '/lib/bookmarks')
-    await expect(page.locator('.bottomnav')).toBeVisible()
-    await expect(page.locator('.topnav')).toBeHidden()
+    await expect(page.locator('.bottomnav')).toHaveCount(0)
+    await expect(page.locator('.topnav')).toHaveCount(0)
     await expect(page.locator('aside.side')).toBeHidden()
+    await expect(page.getByTestId('workspace-search')).toBeVisible()
+    await page.getByRole('button', { name: '文件夹', exact: true }).click()
+    const sheet = page.getByRole('dialog', { name: '书签' })
+    await expect(sheet.getByTestId('tree-root')).toBeVisible()
+    await sheet.getByRole('button', { name: '关闭' }).click()
     await page.locator('[data-testid=item-row][data-title="Example Domain"]').getByTestId('row-menu').click()
     await page.getByRole('menuitem', { name: '移动到…' }).click()
     await page.getByTestId('move-dialog').getByTestId('folder-option').filter({ hasText: '阅读' }).click()

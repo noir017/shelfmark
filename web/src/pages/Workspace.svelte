@@ -6,19 +6,23 @@
   import AiOrganizeDialog from '../components/AiOrganizeDialog.svelte'
   import BookmarkLink from '../components/BookmarkLink.svelte'
   import BulkDialog from '../components/BulkDialog.svelte'
+  import Dialog from '../components/Dialog.svelte'
   import Favicon from '../components/Favicon.svelte'
   import FolderTree from '../components/FolderTree.svelte'
   import Icon from '../components/Icon.svelte'
   import ItemDialog, { type ItemDraft } from '../components/ItemDialog.svelte'
+  import SaveSheet from '../components/SaveSheet.svelte'
+  import SearchResults from '../components/SearchResults.svelte'
   import { planMove, planNudge, planRecreate, type DropTarget } from '../lib/dnd'
   import type { DragSourceOptions } from '../lib/dragdrop'
   import { dragSource } from '../lib/dragdrop'
   import { fmtRelative, t } from '../lib/i18n/index.svelte'
   import { confirmDialog, openMenu, promptDialog, type MenuItem } from '../lib/overlay.svelte'
-  import { navigate } from '../lib/router.svelte'
+  import { navigate, router } from '../lib/router.svelte'
   import { useShortcuts } from '../lib/shortcuts'
   import { app, defaultLibrary, errorText, refreshLibraries } from '../lib/stores/app.svelte'
   import { loadTree, treeEntry } from '../lib/stores/trees.svelte'
+  import { rememberFolder, startFolder, workspace } from '../lib/stores/workspace.svelte'
   import { parseTags } from '../lib/tags'
   import { toast } from '../lib/toast.svelte'
   import { childrenOf, isAncestorOrSelf, topLevelOnly } from '../lib/tree'
@@ -27,14 +31,24 @@
 
   let { params, query }: { params: Record<string, string>; query: URLSearchParams } = $props()
 
-  const slug = $derived(params.slug ?? '')
-  const folderId = $derived(params.folderId ? Number(params.folderId) : 0)
+  const start = $derived(startFolder())
+  const slug = $derived(params.slug ?? start?.library ?? '')
+  const folderId = $derived(params.folderId ? Number(params.folderId) : params.slug ? 0 : (start?.folderId ?? 0))
 
   $effect(() => {
-    if (!params.slug) {
+    if (router.current.path === '/lib') {
       const d = defaultLibrary()
       if (d) navigate(`/lib/${d}`, { replace: true })
+    } else if (router.current.path === '/add') {
+      navigate('/share' + location.search, { replace: true })
     }
+  })
+
+  $effect(() => {
+    if (!slug || !router.current.path.startsWith('/lib')) return
+    const last = workspace.last
+    if (last?.library === slug && last.folderId === folderId) return
+    rememberFolder(slug, folderId)
   })
 
   const entry = $derived(slug ? treeEntry(slug) : null)
@@ -44,11 +58,50 @@
   const folderNode = $derived(folderId && idx ? idx.byId.get(folderId) : null)
   const items = $derived(idx ? childrenOf(idx, folderId) : [])
 
-  let filter = $state('')
+  let q = $state('')
+  let searchMode = $state(false)
+  let returnFolder = $state<{ library: string; folderId: number } | null>(null)
+  let saveOpen = $state(false)
+  let saveInit = $state({ url: '', title: '', text: '', library: '', folderId: null as number | null })
+  let treeOpen = $state(false)
+  let treeAt = $state('')
+
+  function openTree() {
+    treeAt = `${slug}:${folderId}`
+    treeOpen = true
+  }
+
+  $effect(() => {
+    if (treeOpen && treeAt && treeAt !== `${slug}:${folderId}`) treeOpen = false
+  })
+
   const shown = $derived.by(() => {
-    const s = filter.trim().toLowerCase()
+    if (searchMode) return []
+    const s = q.trim().toLowerCase()
     if (!s) return items
     return items.filter((i) => [i.title, i.url ?? '', i.tags.join(' '), i.notes ?? ''].join(' ').toLowerCase().includes(s))
+  })
+
+  // 路由变化：搜索/分享进入对应模式，普通文件夹退出。
+  $effect(() => {
+    const path = router.current.path
+    if (path === '/search') {
+      searchMode = true
+      q = query.get('q') ?? ''
+    } else if (path === '/share') {
+      searchMode = false
+      saveInit = {
+        url: query.get('url') ?? '',
+        title: query.get('title') ?? '',
+        text: query.get('text') ?? '',
+        library: app.settings?.defaultSave?.library ?? start?.library ?? '',
+        folderId: app.settings?.defaultSave?.folderId ?? null,
+      }
+      saveOpen = true
+    } else {
+      searchMode = false
+      q = ''
+    }
   })
 
   const selected = new SvelteSet<number>()
@@ -87,12 +140,16 @@
   $effect(() => {
     if (slug) void loadTree(slug)
   })
+  // 上次文件夹被删了：回库根，避免停在空内容上。
+  $effect(() => {
+    if (!idx || !folderId || router.current.path !== '/') return
+    if (!idx.byId.get(folderId)) navigate(`/lib/${slug}`, { replace: true })
+  })
   $effect(() => {
     void folderId
     selected.clear()
     cursor = -1
     editing = null
-    filter = ''
   })
   $effect(() => {
     const onRefresh = () => slug && void loadTree(slug)
@@ -166,6 +223,46 @@
   async function newFolder() {
     const name = await promptDialog({ title: t('item.newFolder'), input: { label: t('field.title'), placeholder: t('item.folderPlaceholder') }, confirmLabel: t('common.create') })
     if (name) await create({ type: 'folder', title: name, url: '', tags: [], notes: '', parentId: folderId })
+  }
+
+  function submitSearch() {
+    const s = q.trim()
+    if (!s) return
+    returnFolder = { library: slug, folderId }
+    navigate('/search?q=' + encodeURIComponent(s))
+  }
+
+  function exitSearch() {
+    const r = returnFolder ?? { library: slug, folderId }
+    q = ''
+    navigate(r.folderId ? `/lib/${r.library}/f/${r.folderId}` : `/lib/${r.library}`)
+  }
+
+  function openSave() {
+    saveInit = { url: '', title: '', text: '', library: slug, folderId }
+    saveOpen = true
+  }
+
+  function closeSave() {
+    saveOpen = false
+    if (router.current.path === '/share') navigate(folderId ? `/lib/${slug}/f/${folderId}` : `/lib/${slug}`, { replace: true })
+  }
+
+  function onSaved() {
+    void loadTree(slug)
+    void refreshLibraries()
+  }
+
+  function newMenu(e: MouseEvent) {
+    const r = (e.currentTarget as HTMLElement).getBoundingClientRect()
+    openMenu(r.left, r.bottom + 4, [
+      { label: t('manager.newBookmark'), icon: 'bookmark-plus', disabled: readonly, run: openSave },
+      { label: t('manager.newFolder'), icon: 'folder', disabled: readonly, run: () => void newFolder() },
+    ])
+  }
+
+  function goUp() {
+    if (folderNode) navigate(folderNode.parentId ? `/lib/${slug}/f/${folderNode.parentId}` : `/lib/${slug}`)
   }
 
   async function rename(it: Item) {
@@ -287,13 +384,15 @@
   function moreMenu(e: MouseEvent) {
     const r = (e.currentTarget as HTMLElement).getBoundingClientRect()
     const items: MenuItem[] = [
+      { label: t('nav.settings'), icon: 'settings', run: () => navigate('/settings') },
       { label: t('manager.history'), icon: 'history', run: () => navigate(`/history/${slug}`) },
       { label: t('manager.deletedItems'), icon: 'restore', run: () => navigate(`/deleted/${slug}`) },
+      { label: t('pending.title'), icon: 'warn', run: () => navigate(`/history/${slug}`) },
       { label: t('manager.reportBroken'), icon: 'broken', run: () => navigate(`/reports/broken?library=${slug}`) },
       { label: t('manager.reportDuplicates'), icon: 'duplicate', run: () => navigate(`/reports/duplicates?library=${slug}`) },
       { label: t('manager.export'), icon: 'download', run: () => navigate('/settings/import-export') },
     ]
-    if (app.info?.features.ai) items.splice(0, 0, { label: t('menu.aiOrganize'), icon: 'sparkle', disabled: readonly, run: () => (dialog = { kind: 'ai' }) })
+    if (app.info?.features.ai) items.splice(1, 0, { label: t('menu.aiOrganize'), icon: 'sparkle', disabled: readonly, run: () => (dialog = { kind: 'ai' }) })
     openMenu(r.left, r.bottom + 4, items)
   }
 
@@ -349,10 +448,11 @@
         const ids = selected.size ? [...selected] : cursorItem() ? [cursorItem()!.id] : []
         void remove(ids)
       },
-      n: () => !readonly && (dialog = { kind: 'new', type: 'bookmark' }),
+      n: () => !readonly && openSave(),
       Backspace: () => folderNode && navigate(folderNode.parentId ? `/lib/${slug}/f/${folderNode.parentId}` : `/lib/${slug}`),
       Escape: () => {
-        if (editing !== null) editing = null
+        if (searchMode) exitSearch()
+        else if (editing !== null) editing = null
         else selected.clear()
       },
     }),
@@ -365,22 +465,44 @@
   )
 </script>
 
-<div class="manager">
-  <div class="head">
-    <div class="row">
-      {#if app.libraries.length > 1}
-        <select aria-label={t('field.library')} value={slug} onchange={(e) => navigate('/lib/' + (e.currentTarget as HTMLSelectElement).value)} data-testid="library-switch">
-          {#each app.libraries as l (l.slug)}<option value={l.slug}>{l.name}</option>{/each}
-        </select>
-      {:else}
-        <h1>{lib?.name ?? slug}</h1>
+<div class="workspace">
+  <header class="wtop">
+    <div class="wtop-row">
+      {#if folderId !== 0}
+        <button class="icon-btn narrow-only" aria-label={t('common.back')} onclick={goUp}><Icon name="arrowLeft" /></button>
       {/if}
+      <a class="brand wide-only" href="/lib/{slug}"><Icon name="bookmark" size={20} /><span>shelfmark</span></a>
+      <nav class="crumbs" aria-label={t('manager.breadcrumb')}>
+        <button class="icon-btn narrow-only" aria-label={t('tree.label')} onclick={openTree}><Icon name="folder" size={18} /></button>
+        <a href="/lib/{slug}">{lib?.name ?? slug}</a>
+        {#if folderNode}
+          {#each folderNode.pathIds as pid, i (pid)}
+            <Icon name="chevron" size={14} />
+            <a href="/lib/{slug}/f/{pid}">{folderNode.path[i]}</a>
+          {/each}
+          <Icon name="chevron" size={14} />
+          <span class="cur">{folderNode.item.title}</span>
+        {/if}
+      </nav>
       <div class="spacer"></div>
-      <button class="btn primary" onclick={() => (dialog = { kind: 'new', type: 'bookmark' })} disabled={readonly} data-testid="new-bookmark">
+      <form class="wsearch" role="search" onsubmit={(e) => { e.preventDefault(); if (!searchMode) submitSearch() }}>
+        <Icon name="search" size={16} />
+        <input
+          bind:value={q}
+          type="search"
+          data-search-input
+          placeholder={searchMode ? t('search.placeholder') : t('manager.filter')}
+          aria-label={t('nav.search')}
+          data-testid="workspace-search"
+        />
+        {#if searchMode}
+          <button class="icon-btn" type="button" aria-label={t('common.cancel')} onclick={exitSearch}><Icon name="close" size={16} /></button>
+        {:else if q.trim()}
+          <button class="btn small" type="submit">{t('search.all')}</button>
+        {/if}
+      </form>
+      <button class="btn primary" onclick={newMenu} disabled={readonly} data-testid="new-bookmark">
         <Icon name="plus" size={16} /><span class="wide-only">{t('manager.newBookmark')}</span>
-      </button>
-      <button class="btn" onclick={newFolder} disabled={readonly} data-testid="new-folder">
-        <Icon name="folder" size={16} /><span class="wide-only">{t('manager.newFolder')}</span>
       </button>
       <button class="icon-btn" aria-label={t('common.more')} onclick={moreMenu} data-testid="manager-more"><Icon name="more" /></button>
     </div>
@@ -398,7 +520,7 @@
         {#if entry?.stale}<span class="badge">{t('manager.cached')}</span>{/if}
       </div>
     {/if}
-  </div>
+  </header>
 
   {#if entry?.error && !idx}
     <p class="error-text">{entry.error}</p>
@@ -411,36 +533,27 @@
       </aside>
 
       <section class="main">
-        <nav class="crumbs" aria-label={t('manager.breadcrumb')}>
-          <a href="/lib/{slug}" data-drop-id="0" data-drop-inside>{lib.name}</a>
-          {#if folderNode}
-            {#each folderNode.pathIds as pid, i (pid)}
-              <Icon name="chevron" size={14} />
-              <a href="/lib/{slug}/f/{pid}" data-drop-id={pid} data-drop-inside>{folderNode.path[i]}</a>
-            {/each}
-            <Icon name="chevron" size={14} />
-            <span class="cur">{folderNode.item.title}</span>
-          {/if}
-        </nav>
+        {#if searchMode}
+          <SearchResults q={q} onback={exitSearch} />
+        {:else}
+          <div class="listbar">
+            <input type="checkbox" checked={allChecked} aria-label={t('manager.selectAll')} onchange={() => (allChecked ? selected.clear() : shown.forEach((i) => selected.add(i.id)))} />
+            {#if selected.size}
+              <div class="selbar" data-testid="selection-bar">
+                <span>{t('manager.selected', { n: selected.size })}</span>
+                <button class="btn small" disabled={readonly} onclick={() => (dialog = { kind: 'move', ids: [...selected] })}><Icon name="move" size={15} />{t('manager.moveTo')}</button>
+                <button class="btn small" disabled={readonly} onclick={() => (dialog = { kind: 'tag', ids: [...selected] })}><Icon name="tag" size={15} />{t('menu.tags')}</button>
+                <button class="btn small" disabled={readonly} onclick={() => remove([...selected])} data-testid="bulk-delete"><Icon name="trash" size={15} />{t('menu.delete')}</button>
+                <button class="btn small ghost" onclick={() => selected.clear()}>{t('common.cancel')}</button>
+              </div>
+            {:else}
+              <span class="hint">{t('manager.items', { n: shown.length })}</span>
+            {/if}
+          </div>
 
-        <div class="listbar">
-          <input type="checkbox" checked={allChecked} aria-label={t('manager.selectAll')} onchange={() => (allChecked ? selected.clear() : shown.forEach((i) => selected.add(i.id)))} />
-          {#if selected.size}
-            <div class="selbar" data-testid="selection-bar">
-              <span>{t('manager.selected', { n: selected.size })}</span>
-              <button class="btn small" disabled={readonly} onclick={() => (dialog = { kind: 'move', ids: [...selected] })}><Icon name="move" size={15} />{t('manager.moveTo')}</button>
-              <button class="btn small" disabled={readonly} onclick={() => (dialog = { kind: 'tag', ids: [...selected] })}><Icon name="tag" size={15} />{t('menu.tags')}</button>
-              <button class="btn small" disabled={readonly} onclick={() => remove([...selected])} data-testid="bulk-delete"><Icon name="trash" size={15} />{t('menu.delete')}</button>
-              <button class="btn small ghost" onclick={() => selected.clear()}>{t('common.cancel')}</button>
-            </div>
-          {:else}
-            <input class="filter" type="search" bind:value={filter} placeholder={t('manager.filter')} aria-label={t('manager.filter')} />
-          {/if}
-        </div>
-
-        <div class="rows" role="list" data-testid="item-list">
+          <div class="rows" role="list" data-testid="item-list">
           {#if !shown.length}
-            <p class="hint empty">{filter ? t('manager.noMatch') : t('manager.emptyFolder')}</p>
+            <p class="hint empty">{q.trim() ? t('manager.noMatch') : t('manager.emptyFolder')}</p>
           {/if}
           {#each shown as it, i (it.id)}
             <div
@@ -495,13 +608,34 @@
               {/if}
             </div>
           {/each}
-        </div>
+          </div>
+        {/if}
       </section>
     </div>
   {:else if entry?.loading}
     <p class="hint">{t('common.loading')}</p>
   {/if}
 </div>
+
+{#if saveOpen}
+  <SaveSheet
+    initialUrl={saveInit.url}
+    initialTitle={saveInit.title}
+    initialText={saveInit.text}
+    initialLibrary={saveInit.library || slug}
+    initialFolderId={saveInit.folderId}
+    onclose={closeSave}
+    onsaved={onSaved}
+  />
+{/if}
+
+{#if treeOpen}
+  <Dialog title={lib?.name ?? ''} onclose={() => (treeOpen = false)} wide>
+    {#if idx && lib}
+      <FolderTree {slug} name={lib.name} {idx} current={folderId} {expanded} {readonly} drag={dragOpts} oncontext={context} />
+    {/if}
+  </Dialog>
+{/if}
 
 {#if dialog?.kind === 'new'}
   <ItemDialog {slug} mode="new" initial={{ type: dialog.type, parentId: folderId }} onsubmit={create} onclose={() => (dialog = null)} />
@@ -538,17 +672,81 @@
 {/if}
 
 <style>
-  .manager {
+  .workspace {
     max-width: 1280px;
     margin: 0 auto;
-    padding: 12px 16px 40px;
+    padding: 0 16px 40px;
   }
-  .head h1 {
-    margin: 0;
-    font-size: 1.2rem;
+  .wtop {
+    position: sticky;
+    top: 0;
+    z-index: 20;
+    margin: 0 -16px;
+    padding: 8px 16px;
+    background: var(--surface);
+    border-bottom: 1px solid var(--border);
   }
-  .head select {
+  .wtop-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    min-height: 40px;
+  }
+  .brand {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-weight: 700;
+    color: var(--text);
+    text-decoration: none;
+  }
+  .brand :global(.icon) {
+    color: var(--accent);
+  }
+  .crumbs {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    min-width: 0;
+    color: var(--text-3);
+    font-size: 0.92rem;
+    overflow: hidden;
+    white-space: nowrap;
+  }
+  .crumbs a {
+    padding: 2px 4px;
+    border-radius: 4px;
+    color: var(--text-2);
+    text-decoration: none;
+  }
+  .crumbs .cur {
+    color: var(--text);
     font-weight: 600;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .wsearch {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    min-width: 180px;
+    max-width: 380px;
+    flex: 1;
+    background: var(--surface-2);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 0 8px;
+    color: var(--text-3);
+  }
+  .wsearch input {
+    flex: 1;
+    min-width: 0;
+    border: 0;
+    background: none;
+    min-height: 32px;
+  }
+  .wsearch input:focus {
+    outline: none;
   }
   .sync {
     display: flex;
@@ -557,7 +755,7 @@
     gap: 6px;
     font-size: 0.85rem;
     color: var(--text-2);
-    margin: 8px 0 10px;
+    margin: 6px 0 2px;
   }
   .locked {
     color: var(--warn);
@@ -574,8 +772,8 @@
   }
   .side {
     position: sticky;
-    top: calc(var(--topbar-h) + 8px);
-    max-height: calc(100vh - var(--topbar-h) - 24px);
+    top: 96px;
+    max-height: calc(100vh - 120px);
     overflow-y: auto;
     background: var(--surface);
     border: 1px solid var(--border);
@@ -584,23 +782,6 @@
   }
   .main {
     min-width: 0;
-  }
-  .crumbs {
-    display: flex;
-    flex-wrap: wrap;
-    align-items: center;
-    gap: 4px;
-    margin-bottom: 8px;
-    color: var(--text-3);
-    font-size: 0.92rem;
-  }
-  .crumbs a {
-    padding: 2px 4px;
-    border-radius: 4px;
-  }
-  .crumbs .cur {
-    color: var(--text);
-    font-weight: 600;
   }
   .listbar {
     display: flex;
@@ -612,10 +793,6 @@
     border: 1px solid var(--border);
     border-bottom: 0;
     border-radius: var(--radius-lg) var(--radius-lg) 0 0;
-  }
-  .filter {
-    flex: 1;
-    min-height: 32px;
   }
   .selbar {
     display: flex;
@@ -699,8 +876,31 @@
     width: 100%;
   }
   @media (max-width: 899px) {
-    .manager {
-      padding: 10px 10px calc(30px + var(--bottom-nav-h));
+    .workspace {
+      padding: 0 10px 30px;
+    }
+    .wtop {
+      margin: 0 -10px;
+      padding: 6px 10px;
+    }
+    .wtop-row {
+      flex-wrap: wrap;
+      gap: 6px;
+    }
+    .brand {
+      display: none;
+    }
+    .crumbs {
+      flex: 1;
+    }
+    .wsearch {
+      order: 10;
+      flex-basis: 100%;
+      max-width: none;
+      min-width: 0;
+    }
+    .sync {
+      margin: 4px 0 0;
     }
     .cols {
       grid-template-columns: 1fr;

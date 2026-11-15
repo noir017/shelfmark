@@ -6,17 +6,14 @@
   import Favicon from '../components/Favicon.svelte'
   import Icon from '../components/Icon.svelte'
   import { t } from '../lib/i18n/index.svelte'
-  import { navigate } from '../lib/router.svelte'
   import { escapeHtml, highlight, isEmptyQuery, matches, parseQuery, score } from '../lib/search/query'
   import { app, errorText } from '../lib/stores/app.svelte'
   import { loadTree } from '../lib/stores/trees.svelte'
   import { allBookmarks } from '../lib/tree'
   import { normalizeUrl } from '../lib/url'
 
-  let { query }: { params: Record<string, string>; query: URLSearchParams } = $props()
+  let { q, library = '', onback }: { q: string; library?: string; onback: () => void } = $props()
 
-  let q = $state(query.get('q') ?? '')
-  let library = $state(query.get('library') ?? '')
   let results = $state<SearchHit[]>([])
   let total = $state(0)
   let loading = $state(false)
@@ -24,8 +21,6 @@
   let local = $state(false)
   let showHelp = $state(false)
   const PAGE = 50
-
-  const current = $derived(query.get('q') ?? '')
 
   /** 离线时在缓存的树上本地搜索 */
   async function localSearch(qs: string): Promise<SearchHit[]> {
@@ -55,7 +50,7 @@
   }
 
   async function run(more = false) {
-    const qs = current.trim()
+    const qs = q.trim()
     error = ''
     if (!qs || isEmptyQuery(parseQuery(qs))) {
       results = []
@@ -83,53 +78,35 @@
   }
 
   $effect(() => {
-    void current
+    void q
     void library
     void run()
   })
-
-  function submit(e: Event) {
-    e.preventDefault()
-    const params = new URLSearchParams()
-    if (q.trim()) params.set('q', q.trim())
-    if (library) params.set('library', library)
-    navigate('/search?' + params.toString(), { replace: !!current })
-  }
 
   const libName = (s: string) => app.libraries.find((l) => l.slug === s)?.name ?? s
   const examples = ['svelte', '"go blog"', '#dev', 'site:github.com', 'in:工具', 'lib:work', 'is:broken', 'is:duplicate', 'react -vue']
 </script>
 
-<div class="page narrow">
-  <form class="searchbar" role="search" onsubmit={submit}>
-    <Icon name="search" />
-    <!-- svelte-ignore a11y_autofocus -->
-    <input data-search-input type="search" bind:value={q} placeholder={t('search.placeholder')} aria-label={t('nav.search')} autofocus={!current} data-testid="search-input" />
-    {#if app.libraries.length > 1}
-      <select bind:value={library} aria-label={t('field.library')} onchange={submit}>
-        <option value="">{t('search.allLibraries')}</option>
-        {#each app.libraries as l (l.slug)}<option value={l.slug}>{l.name}</option>{/each}
-      </select>
-    {/if}
-    <button class="btn primary" type="submit">{t('nav.search')}</button>
-  </form>
-  <div class="row">
-    <button class="link" onclick={() => (showHelp = !showHelp)}>{t('search.syntax')}</button>
+<div class="search-results" data-testid="search-results">
+  <div class="row head">
+    <button class="btn small" onclick={onback}><Icon name="arrowLeft" size={15} />{t('search.backFolder')}</button>
     {#if local}<span class="badge warn" data-testid="local-search">{t('search.local')}</span>{/if}
-    {#if current && !loading}<span class="hint">{t('search.total', { n: total })}</span>{/if}
+    {#if q.trim() && !loading}<span class="hint">{t('search.total', { n: total })}</span>{/if}
+    <div class="spacer"></div>
+    <button class="link" onclick={() => (showHelp = !showHelp)}>{t('search.syntax')}</button>
   </div>
   {#if showHelp}
     <div class="card help">
       <p>{t('search.help')}</p>
       <div class="row">
-        {#each examples as ex (ex)}<a class="chip" href="/search?q={encodeURIComponent(ex)}"><code>{ex}</code></a>{/each}
+        {#each examples as ex (ex)}<span class="chip"><code>{ex}</code></span>{/each}
       </div>
     </div>
   {/if}
 
   {#if error}<p class="error-text">{error}</p>{/if}
 
-  <ul class="results" data-testid="search-results">
+  <ul class="results">
     {#each results as r (r.library + ':' + r.item.id)}
       <li data-testid="search-hit">
         <Favicon item={r.item} size={20} />
@@ -155,20 +132,12 @@
   {#if !local && results.length < total}
     <button class="btn" onclick={() => run(true)} disabled={loading}>{t('common.loadMore')}</button>
   {/if}
-  {#if current && !loading && !results.length && !error}<p class="hint">{t('search.none')}</p>{/if}
+  {#if q.trim() && !loading && !results.length && !error}<p class="hint">{t('search.none')}</p>{/if}
 </div>
 
 <style>
-  .searchbar {
-    display: flex;
-    align-items: center;
-    gap: 8px;
+  .head {
     margin-bottom: 8px;
-    color: var(--text-3);
-  }
-  .searchbar input {
-    flex: 1;
-    min-width: 0;
   }
   .help {
     margin: 8px 0;
@@ -213,10 +182,5 @@
   }
   .where a:first-child {
     color: var(--text-3);
-  }
-  @media (max-width: 599px) {
-    .searchbar select {
-      max-width: 34%;
-    }
   }
 </style>

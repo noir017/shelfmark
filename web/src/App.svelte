@@ -11,10 +11,10 @@
   let Page = $state<Component<any> | null>(null)
   let pageFor = $state<string | null>(null)
   let showHelp = $state(false)
-  let q = $state('')
 
   const def = $derived(router.current.def)
   const bare = $derived(!!def.bare)
+  const workspace = $derived(def.name === 'workspace')
 
   // 懒加载页面
   $effect(() => {
@@ -23,14 +23,15 @@
     d.load().then((m) => {
       if (cancelled) return
       Page = m.default
-      pageFor = d.pattern
+      pageFor = d.name
     })
     return () => {
       cancelled = true
     }
   })
 
-  const pageKey = $derived(['manager', 'settings'].includes(def.name) ? def.name : router.current.path + '?' + router.current.query)
+  // 主工作区在文件夹之间切换时不重建；设置页同理。
+  const pageKey = $derived(def.name === 'workspace' ? 'workspace' : def.name === 'settings' ? 'settings' : router.current.path + '?' + router.current.query)
 
   // 窗口重新获得焦点时刷新；定时检查待确认的上传
   let lastRefresh = 0
@@ -60,21 +61,7 @@
     Escape: () => (showHelp = false),
   })
 
-  function search(e: Event) {
-    e.preventDefault()
-    if (!q.trim()) return
-    navigate('/search?q=' + encodeURIComponent(q.trim()))
-    q = ''
-  }
-
   const firstPending = $derived(app.pending[0])
-  const navItems = $derived([
-    { href: '/', icon: 'home', label: t('nav.start'), on: def.name === 'start' },
-    { href: '/lib', icon: 'library', label: t('nav.manager'), on: ['manager', 'history', 'deleted', 'pending'].includes(def.name) },
-    { href: '/search', icon: 'search', label: t('nav.search'), on: def.name === 'search', narrow: true },
-    { href: '/add', icon: 'bookmark-plus', label: t('nav.add'), on: def.name === 'share' },
-    { href: '/settings', icon: 'settings', label: t('nav.settings'), on: def.name === 'settings' || def.name === 'broken' || def.name === 'duplicates' },
-  ])
 </script>
 
 <svelte:window onfocus={refresh} />
@@ -111,38 +98,20 @@
     <button class="btn" onclick={() => location.reload()}>{t('banner.reload')}</button>
   </div>
 {:else}
-  {#if !bare}
+  {#if !bare && !workspace}
     <header class="topbar">
       <a class="brand" href="/"><Icon name="bookmark" size={20} /><span>shelfmark</span></a>
-      {#if def.name !== 'start' && def.name !== 'search'}
-        <form class="search wide-only" role="search" onsubmit={search}>
-          <Icon name="search" size={16} />
-          <input data-search-input type="search" bind:value={q} placeholder={t('search.placeholderShort')} aria-label={t('nav.search')} />
-        </form>
-      {:else}
-        <div class="spacer"></div>
-      {/if}
-      <nav class="topnav wide-only">
-        {#each navItems.filter((n) => !n.narrow) as n (n.href)}
-          <a href={n.href} class:on={n.on}><Icon name={n.icon} size={17} /><span>{n.label}</span></a>
-        {/each}
-      </nav>
+      <div class="spacer"></div>
+      <a class="btn small" href="/lib">{t('nav.bookmarks')}</a>
     </header>
   {/if}
   <main class:bare>
-    {#if Page && pageFor === def.pattern}
+    {#if Page && pageFor === def.name}
       {#key pageKey}
         <Page params={router.current.params} query={router.current.query} />
       {/key}
     {/if}
   </main>
-  {#if !bare}
-    <nav class="bottomnav narrow-only" aria-label={t('nav.main')}>
-      {#each navItems as n (n.href)}
-        <a href={n.href} class:on={n.on}><Icon name={n.icon} size={20} /><span>{n.label}</span></a>
-      {/each}
-    </nav>
-  {/if}
 {/if}
 
 {#if showHelp}
@@ -177,76 +146,8 @@
   .brand :global(.icon) {
     color: var(--accent);
   }
-  .search {
-    flex: 1;
-    max-width: 460px;
-    display: flex;
-    align-items: center;
-    gap: 6px;
-    background: var(--surface-2);
-    border-radius: 8px;
-    padding: 0 10px;
-    color: var(--text-3);
-  }
-  .search input {
-    border: 0;
-    background: none;
-    flex: 1;
-    min-height: 34px;
-    padding: 4px 2px;
-  }
-  .search input:focus {
-    outline: none;
-  }
   .spacer {
     flex: 1;
-  }
-  .topnav {
-    display: flex;
-    gap: 4px;
-    margin-left: auto;
-  }
-  .topnav a {
-    display: flex;
-    align-items: center;
-    gap: 5px;
-    padding: 6px 10px;
-    border-radius: 7px;
-    color: var(--text-2);
-    text-decoration: none;
-  }
-  .topnav a:hover {
-    background: var(--hover);
-  }
-  .topnav a.on {
-    color: var(--accent-text);
-    background: var(--accent-soft);
-  }
-  .bottomnav {
-    position: fixed;
-    left: 0;
-    right: 0;
-    bottom: 0;
-    z-index: 20;
-    height: calc(var(--bottom-nav-h) + env(safe-area-inset-bottom));
-    padding-bottom: env(safe-area-inset-bottom);
-    display: flex;
-    background: var(--surface);
-    border-top: 1px solid var(--border);
-  }
-  .bottomnav a {
-    flex: 1;
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    justify-content: center;
-    gap: 2px;
-    font-size: 0.72rem;
-    color: var(--text-3);
-    text-decoration: none;
-  }
-  .bottomnav a.on {
-    color: var(--accent);
   }
   .banners {
     position: sticky;

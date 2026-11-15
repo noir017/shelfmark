@@ -149,36 +149,25 @@ function snapshotOf(over: Partial<Snapshot> = {}): Snapshot {
 }
 
 describe('new tab model', () => {
-  const labels = { recent: 'Recent', frequent: 'Frequent' };
-
-  it('without configured sections shows root links and top-level folders', () => {
-    const groups = buildGroups(snapshotOf(), undefined, labels);
-    expect(groups.map((g) => g.title)).toEqual(['书签', '工具', '阅读']);
-    const tools = groups[1]!;
-    expect(tools.entries.map((e) => (e.kind === 'link' ? e.link.title : `[${e.title}]`))).toEqual(['Rust Book', '[深层]']);
+  it('shows one group at the library root', () => {
+    const groups = buildGroups(snapshotOf());
+    expect(groups.map((g) => g.title)).toEqual(['书签']);
+    const entries = groups[0]!.entries;
+    expect(entries.map((e) => (e.kind === 'link' ? e.link.title : `[${e.title}]`))).toEqual(['Root link', '[工具]', '[阅读]']);
+    const tools = entries[1]!;
+    expect(tools.kind === 'folder' && tools.entries.map((e) => (e.kind === 'link' ? e.link.title : `[${e.title}]`))).toEqual(['Rust Book', '[深层]']);
   });
 
-  it('follows start page settings: recent, frequent, sections', () => {
+  it('opens the configured start folder', () => {
     const snap = snapshotOf({
       settings: {
         language: 'auto', theme: 'dark', openInNewTab: false, defaultSave: null, recentSaveTargets: [],
-        startPage: {
-          showSearch: true, showRecent: true, recentCount: 5, showFrequent: true, frequentCount: 5,
-          sections: [
-            { id: 's1', library: 'bookmarks', folderId: 6, title: null, layout: 'list', collapsed: true },
-            { id: 's2', library: 'bookmarks', folderId: 2, title: 'Dev', layout: 'grid', collapsed: false },
-            { id: 'gone', library: 'bookmarks', folderId: 404, title: null, layout: 'grid', collapsed: false },
-          ],
-        },
+        startLocation: { kind: 'folder', library: 'bookmarks', folderId: 6 },
       },
     });
-    const link = { library: 'bookmarks', id: 1, title: 'Root link', url: 'https://root.example.com/' };
-    const groups = buildGroups(snap, { recent: [link], frequent: [], fetchedAt: 0 }, labels);
-    expect(groups.map((g) => [g.id, g.title, g.layout, g.collapsed])).toEqual([
-      ['recent', 'Recent', 'grid', false],
-      ['section:s1', '阅读', 'list', true],
-      ['section:s2', 'Dev', 'grid', false],
-    ]);
+    const groups = buildGroups(snap);
+    expect(groups.map((g) => [g.id, g.title, g.layout, g.collapsed])).toEqual([['bookmarks:6', '阅读', 'grid', false]]);
+    expect(groups[0]!.entries.map((e) => (e.kind === 'link' ? e.link.title : ''))).toEqual(['Trusty blog']);
   });
 
   it('searches the cached trees offline', () => {

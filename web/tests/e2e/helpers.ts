@@ -11,11 +11,36 @@ export async function mock(request: APIRequestContext, path: string, data: Recor
 
 export async function login(page: Page, next = '/') {
   await page.goto(next)
-  if (next === '/') await expect(page.getByTestId('start-search')).toBeVisible()
+  if (next.startsWith('/lib')) await expect(page.getByTestId('item-list')).toBeVisible()
+  else if (next === '/') await expect(page.getByTestId('workspace-search')).toBeVisible()
   else await expect(page).toHaveURL(new RegExp(next.replace(/[?]/g, '\\?')))
 }
 
 export const row = (page: Page, title: string) => page.locator(`[data-testid=item-row][data-title="${title}"]`)
+
+export async function openNew(page: Page, item: '新建书签' | '新建文件夹') {
+  await page.getByTestId('new-bookmark').click()
+  await page.getByRole('menuitem', { name: item, exact: true }).click()
+}
+
+export async function newFolder(page: Page, name: string) {
+  await openNew(page, '新建文件夹')
+  await page.getByTestId('confirm-dialog').locator('input').fill(name)
+  await page.getByRole('button', { name: '创建' }).click()
+  await expect(row(page, name)).toBeVisible()
+}
+
+export async function newBookmark(page: Page, url: string, title: string, tags?: string) {
+  await openNew(page, '新建书签')
+  const dlg = page.getByTestId('save-sheet')
+  await dlg.getByTestId('share-url').fill(url)
+  await dlg.getByTestId('share-title').fill(title)
+  if (tags) await dlg.locator('input[name=tags]').fill(tags)
+  await dlg.getByTestId('share-save').click()
+  await expect(dlg.getByTestId('share-result')).toBeVisible()
+  await dlg.locator('.done').getByRole('button', { name: '关闭' }).click()
+  await expect(row(page, title)).toBeVisible()
+}
 
 export async function rowMenu(page: Page, title: string, item: string) {
   await row(page, title).getByTestId('row-menu').click()

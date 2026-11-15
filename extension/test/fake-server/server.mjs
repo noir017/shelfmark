@@ -40,6 +40,7 @@ function defaultSettings() {
     openInNewTab: false,
     defaultSave: null,
     recentSaveTargets: [],
+    startLocation: { kind: 'folder', library: 'bookmarks', folderId: 2 },
     startPage: { showSearch: true, showRecent: true, recentCount: 10, showFrequent: false, frequentCount: 10, sections: [] },
   };
 }
