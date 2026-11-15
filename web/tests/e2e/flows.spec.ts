@@ -11,6 +11,17 @@ test('内网直接进入，没有登录页', async ({ page }) => {
   await expect(page.getByTestId('start-search')).toBeVisible()
 })
 
+test('起始页自动分组显示默认库的顶层文件夹', async ({ page, request }) => {
+  const r = await request.patch('/api/v1/settings', {
+    data: { startPage: { showSearch: true, showRecent: true, recentCount: 8, showFrequent: true, frequentCount: 8, sections: [] } },
+    headers: { 'X-Requested-With': 'shelfmark' },
+  })
+  expect(r.ok()).toBeTruthy()
+  await page.goto('/')
+  await expect(page.getByTestId('start-section')).toHaveCount(4)
+  await expect(page.getByTestId('start-section').filter({ hasText: '工具' })).toBeVisible()
+})
+
 test('搜索语法', async ({ page }) => {
   await login(page)
   await page.getByTestId('start-search').fill('#docs')

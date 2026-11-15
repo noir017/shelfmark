@@ -17,6 +17,9 @@
 
   const sp = $derived(app.settings?.startPage)
   const defLib = $derived(defaultLibrary())
+  // 先把各库的 TreeEntry 建出来：tree/index 是 $state/$derived，若在某个派生里
+  // 首次创建，Svelte 不会把同一派生里随后对它的读取记为依赖，树加载完也不会重算。
+  for (const l of app.libraries) treeEntry(l.slug)
   /** 没配置分组时，用默认库的顶层文件夹 */
   const sections = $derived.by((): StartSection[] => {
     if (sp?.sections.length) return sp.sections
