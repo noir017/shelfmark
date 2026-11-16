@@ -59,7 +59,7 @@ test('鼠标拖放：把书签拖进文件夹', async ({ page }) => {
   await api(page, 'POST', `/api/v1/libraries/${slug}/items`, { type: 'bookmark', title: 'Example Domain', url: 'https://example.com/' })
   await page.goto(`/lib/${slug}`)
 
-  const src = row(page, 'Example Domain').locator('[data-drag-handle]')
+  const src = row(page, 'Example Domain').locator('.title')
   const dst = row(page, '购物')
   const a = (await src.boundingBox())!
   const b = (await dst.boundingBox())!

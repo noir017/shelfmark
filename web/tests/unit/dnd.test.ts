@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import type { Item } from '../../src/api/types'
 import { dropZone, planMove, planNudge, planRecreate } from '../../src/lib/dnd'
-import { childrenOf, indexTree } from '../../src/lib/tree'
+import { childrenOf, indexTree, outlineRows } from '../../src/lib/tree'
 import { MockDB } from '../../mock/db'
 
 let nextId = 1
@@ -141,5 +141,21 @@ describe('删除的反向操作', () => {
     expect(ops[1]).toMatchObject({ parentId: s.F1.id, position: 2, type: 'folder' })
     expect(ops[2]).toMatchObject({ parentRef: ops[1].ref, tags: ['t'] })
     expect(childrenOf(s.idx, 0)).toHaveLength(4)
+  })
+})
+
+describe('outlineRows', () => {
+  const view = (rows: { item: Item; depth: number }[]) => rows.map((r) => '  '.repeat(r.depth) + r.item.title)
+
+  it('不展开时只有直接子项', () => {
+    const { idx } = sample()
+    expect(view(outlineRows(idx, 0, new Set()))).toEqual(['A', 'B', 'F1', 'C'])
+  })
+
+  it('展开的文件夹就地展开，逐级缩进；没展开的父级挡住子级', () => {
+    const { idx, F1, F2 } = sample()
+    expect(view(outlineRows(idx, 0, new Set([F1.id, F2.id])))).toEqual(['A', 'B', 'F1', '  x', '  y', '  F2', '    z', 'C'])
+    expect(view(outlineRows(idx, 0, new Set([F2.id])))).toEqual(['A', 'B', 'F1', 'C'])
+    expect(view(outlineRows(idx, F1.id, new Set([F2.id])))).toEqual(['x', 'y', 'F2', '  z'])
   })
 })

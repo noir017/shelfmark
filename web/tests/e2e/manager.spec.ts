@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test'
-import { login, mock, newBookmark, newFolder, openNew, reset, row, rowMenu, touchDrag } from './helpers'
+import { login, longPress, mock, newBookmark, newFolder, openNew, reset, row, rowMenu, touchDrag } from './helpers'
 
 test.beforeEach(async ({ request }) => reset(request))
 
@@ -26,7 +26,7 @@ test('建文件夹、建书签、行内编辑、删除并撤销', async ({ page 
 
 test('鼠标拖放：把书签拖进文件夹', async ({ page }) => {
   await login(page, '/lib/bookmarks')
-  const src = row(page, 'Example Domain').locator('[data-drag-handle]')
+  const src = row(page, 'Example Domain').locator('.title')
   const dst = row(page, '购物')
   const a = (await src.boundingBox())!
   const b = (await dst.boundingBox())!
@@ -38,13 +38,6 @@ test('鼠标拖放：把书签拖进文件夹', async ({ page }) => {
   await expect(row(page, 'Example Domain')).toHaveCount(0)
   await row(page, '购物').locator('a.title').click()
   await expect(row(page, 'Example Domain')).toBeVisible()
-})
-
-test('触屏拖放：用手柄把书签排到最前', async ({ page }) => {
-  await login(page, '/lib/bookmarks')
-  await expect(row(page, 'Example Domain')).toBeVisible()
-  await touchDrag(page, '[data-testid=item-row][data-title="Example Domain"]', '[data-testid=item-row][data-title="常用"]', 0.1)
-  await expect(page.getByTestId('item-row').first()).toHaveAttribute('data-title', 'Example Domain')
 })
 
 test('多选批量移动', async ({ page }) => {
@@ -75,5 +68,91 @@ test('同步状态与强制解锁', async ({ page, request }) => {
   await expect(page.getByTestId('sync-status')).toContainText('正在与 Floccus · 台式机 同步')
   await page.getByTestId('force-unlock').click()
   await page.getByTestId('confirm-dialog').getByRole('button', { name: '强制解锁' }).click()
-  await expect(page.getByTestId('sync-status')).not.toContainText('正在与')
+  await expect(page.getByTestId('sync-status')).toHaveCount(0)
+  await expect(page.getByTestId('sync-icon')).toHaveAttribute('title', /最后同步/)
+})
+
+test('书签默认新标签页打开', async ({ page }) => {
+  await login(page, '/lib/bookmarks')
+  await expect(row(page, 'Example Domain').locator('a.title')).toHaveAttribute('target', '_blank')
+})
+
+test('书签栏：悬停弹出文件夹菜单，子文件夹向右展开，移开就收起', async ({ page }) => {
+  await login(page, '/lib/bookmarks')
+  const bar = page.getByTestId('bookmark-bar')
+  await bar.getByTestId('bar-folder').filter({ hasText: '工具' }).hover()
+  const menus = page.getByTestId('folder-menu')
+  await expect(menus).toHaveCount(1)
+  await menus.first().locator('a.mi', { hasText: '在线工具' }).hover()
+  await expect(menus).toHaveCount(2)
+  const link = menus.nth(1).locator('a.mi', { hasText: 'Regex101' })
+  await expect(link).toHaveAttribute('target', '_blank')
+  // 悬停到相邻文件夹直接切换
+  await bar.getByTestId('bar-folder').filter({ hasText: '阅读' }).hover()
+  await expect(menus.first()).toContainText('Lobsters')
+  await page.mouse.move(700, 600)
+  await expect(menus).toHaveCount(0)
+  // 点开的菜单不随指针离开收起，点文件夹进入
+  await bar.getByTestId('bar-folder').filter({ hasText: '工具' }).click()
+  await page.mouse.move(700, 600)
+  await page.waitForTimeout(600)
+  await menus.first().locator('a.mi', { hasText: '在线工具' }).click()
+  await expect(page).toHaveURL(/\/lib\/bookmarks\/f\/\d+$/)
+  await expect(row(page, 'Regex101')).toBeVisible()
+  await expect(menus).toHaveCount(0)
+})
+
+test('面包屑分隔符列出同级文件夹，直接跳过去', async ({ page }) => {
+  await login(page, '/lib/bookmarks')
+  await row(page, '工具').locator('a.title').click()
+  await expect(row(page, '在线工具')).toBeVisible()
+  await page.getByTestId('crumb-sep').first().click()
+  const menu = page.getByTestId('folder-menu')
+  await expect(menu.locator('a.mi')).toHaveText(['常用', '工具', '阅读', '购物'])
+  await menu.locator('a.mi', { hasText: '阅读' }).click()
+  await expect(row(page, 'Lobsters')).toBeVisible()
+  await expect(page.getByTestId('breadcrumbs')).toContainText('阅读')
+})
+
+test('列表原地展开文件夹，刷新后保持', async ({ page }) => {
+  await login(page, '/lib/bookmarks')
+  await expect(row(page, 'GitHub')).toHaveCount(0)
+  await row(page, '常用').getByTestId('row-toggle').click()
+  await expect(row(page, 'GitHub')).toHaveAttribute('data-depth', '1')
+  await page.reload()
+  await expect(row(page, 'GitHub')).toBeVisible()
+  await row(page, '常用').getByTestId('row-toggle').click()
+  await expect(row(page, 'GitHub')).toHaveCount(0)
+})
+
+test('Ctrl/Shift 点击多选', async ({ page }) => {
+  await login(page, '/lib/bookmarks')
+  await row(page, '常用').click({ modifiers: ['ControlOrMeta'] })
+  await expect(page).toHaveURL(/\/lib\/bookmarks$/)
+  await row(page, '购物').click({ modifiers: ['Shift'] })
+  await expect(page.getByTestId('selection-bar')).toContainText('已选 4 项')
+  await page.keyboard.press('Escape')
+  await expect(page.getByTestId('selection-bar')).toHaveCount(0)
+})
+
+test.describe('触屏', () => {
+  test.use({ viewport: { width: 390, height: 844 }, hasTouch: true })
+
+  test('长按进入多选，点行切换选择，用手柄拖动排序', async ({ page }) => {
+    await login(page, '/lib/bookmarks')
+    await expect(row(page, 'Example Domain')).toBeVisible()
+    await expect(row(page, 'Example Domain').locator('[data-drag-handle]')).toBeHidden()
+    await longPress(page, '[data-testid=item-row][data-title="Example Domain"] .title')
+    await expect(page.getByTestId('selection-bar')).toContainText('已选 1 项')
+    await row(page, '内网测试站').locator('.title').tap()
+    await expect(page.getByTestId('selection-bar')).toContainText('已选 2 项')
+    await row(page, '常用').locator('.title').tap()
+    await expect(page).toHaveURL(/\/lib\/bookmarks$/)
+    await expect(page.getByTestId('selection-bar')).toContainText('已选 3 项')
+    await page.getByTestId('selection-bar').getByRole('button', { name: '取消' }).tap()
+    await longPress(page, '[data-testid=item-row][data-title="Example Domain"] .title')
+    await expect(row(page, 'Example Domain').locator('[data-drag-handle]')).toBeVisible()
+    await touchDrag(page, '[data-testid=item-row][data-title="Example Domain"]', '[data-testid=item-row][data-title="常用"]', 0.1)
+    await expect(page.getByTestId('item-row').first()).toHaveAttribute('data-title', 'Example Domain')
+  })
 })

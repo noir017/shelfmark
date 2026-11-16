@@ -42,6 +42,24 @@ export function isAncestorOrSelf(idx: TreeIndex, a: number, b: number): boolean 
   return !!n && n.pathIds.includes(a)
 }
 
+export interface Row {
+  item: Item
+  depth: number
+}
+
+/** 大纲视图：文件夹的子项，展开的子文件夹就地展开 */
+export function outlineRows(idx: TreeIndex, folderId: number, expanded: { has(id: number): boolean }): Row[] {
+  const out: Row[] = []
+  const walk = (parent: number, depth: number) => {
+    for (const it of childrenOf(idx, parent)) {
+      out.push({ item: it, depth })
+      if (it.type === 'folder' && expanded.has(it.id)) walk(it.id, depth + 1)
+    }
+  }
+  walk(folderId, 0)
+  return out
+}
+
 export interface FolderEntry {
   id: number
   title: string

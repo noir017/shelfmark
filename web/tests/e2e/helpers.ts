@@ -47,6 +47,22 @@ export async function rowMenu(page: Page, title: string, item: string) {
   await page.getByRole('menuitem', { name: item, exact: true }).click()
 }
 
+/** 合成触屏长按（Playwright 没有长按 API） */
+export async function longPress(page: Page, selector: string) {
+  await page.evaluate((selector) => {
+    const el = document.querySelector<HTMLElement>(selector)!
+    const r = el.getBoundingClientRect()
+    const opts = { bubbles: true, cancelable: true, pointerId: 9, pointerType: 'touch', isPrimary: true, button: 0, clientX: r.left + r.width / 2, clientY: r.top + r.height / 2 }
+    el.dispatchEvent(new PointerEvent('pointerdown', opts))
+    return new Promise<void>((done) =>
+      setTimeout(() => {
+        el.dispatchEvent(new PointerEvent('pointerup', opts))
+        done()
+      }, 600),
+    )
+  }, selector)
+}
+
 /** 用合成的触屏 PointerEvent 拖动（Playwright 没有多点触控拖动 API） */
 export async function touchDrag(page: Page, from: string, to: string, yFraction: number) {
   await page.evaluate(

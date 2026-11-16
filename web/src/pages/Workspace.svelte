@@ -4,13 +4,13 @@
   import { ApiError } from '../api/client'
   import type { BatchOp, Item } from '../api/types'
   import AiOrganizeDialog from '../components/AiOrganizeDialog.svelte'
-  import BookmarkLink from '../components/BookmarkLink.svelte'
+  import BookmarkBar from '../components/BookmarkBar.svelte'
+  import Breadcrumbs from '../components/Breadcrumbs.svelte'
   import BulkDialog from '../components/BulkDialog.svelte'
-  import Dialog from '../components/Dialog.svelte'
-  import Favicon from '../components/Favicon.svelte'
   import FolderTree from '../components/FolderTree.svelte'
   import Icon from '../components/Icon.svelte'
   import ItemDialog, { type ItemDraft } from '../components/ItemDialog.svelte'
+  import ItemRow, { type ItemPatch } from '../components/ItemRow.svelte'
   import SaveSheet from '../components/SaveSheet.svelte'
   import SearchResults from '../components/SearchResults.svelte'
   import { planMove, planNudge, planRecreate, type DropTarget } from '../lib/dnd'
@@ -20,13 +20,11 @@
   import { confirmDialog, openMenu, promptDialog, type MenuItem } from '../lib/overlay.svelte'
   import { navigate, router } from '../lib/router.svelte'
   import { useShortcuts } from '../lib/shortcuts'
-  import { app, defaultLibrary, errorText, refreshLibraries } from '../lib/stores/app.svelte'
+  import { app, defaultLibrary, errorText, opensInNewTab, refreshLibraries } from '../lib/stores/app.svelte'
   import { loadTree, treeEntry } from '../lib/stores/trees.svelte'
   import { rememberFolder, startFolder, workspace } from '../lib/stores/workspace.svelte'
-  import { parseTags } from '../lib/tags'
   import { toast } from '../lib/toast.svelte'
-  import { childrenOf, isAncestorOrSelf, topLevelOnly } from '../lib/tree'
-  import { hostOf } from '../lib/url'
+  import { childrenOf, isAncestorOrSelf, outlineRows, topLevelOnly, type Row } from '../lib/tree'
   import { recordVisit } from '../lib/visits'
 
   let { params, query }: { params: Record<string, string>; query: URLSearchParams } = $props()
@@ -63,24 +61,8 @@
   let returnFolder = $state<{ library: string; folderId: number } | null>(null)
   let saveOpen = $state(false)
   let saveInit = $state({ url: '', title: '', text: '', library: '', folderId: null as number | null })
-  let treeOpen = $state(false)
-  let treeAt = $state('')
-
-  function openTree() {
-    treeAt = `${slug}:${folderId}`
-    treeOpen = true
-  }
-
-  $effect(() => {
-    if (treeOpen && treeAt && treeAt !== `${slug}:${folderId}`) treeOpen = false
-  })
-
-  const shown = $derived.by(() => {
-    if (searchMode) return []
-    const s = q.trim().toLowerCase()
-    if (!s) return items
-    return items.filter((i) => [i.title, i.url ?? '', i.tags.join(' '), i.notes ?? ''].join(' ').toLowerCase().includes(s))
-  })
+  let searchOpen = $state(false)
+  let headH = $state(0)
 
   // 路由变化：搜索/分享进入对应模式，普通文件夹退出。
   $effect(() => {
@@ -108,9 +90,6 @@
   let cursor = $state(-1)
   let anchor: number | null = null
   let editing = $state<number | null>(null)
-  let editTitle = $state('')
-  let editUrl = $state('')
-  let editTags = $state('')
   let dialog = $state<
     | { kind: 'new'; type: 'bookmark' | 'folder' }
     | { kind: 'edit'; item: Item }
@@ -135,6 +114,28 @@
   $effect(() => {
     const ids = [...expanded]
     localStorage.setItem(`shelfmark.expanded.${slug}`, JSON.stringify(ids))
+  })
+
+  // 列表是大纲视图：展开的子文件夹就地展开，展开状态和侧栏树共用。筛选时只看当前文件夹的直接子项。
+  const rows = $derived.by((): Row[] => {
+    if (searchMode || !idx) return []
+    const s = q.trim().toLowerCase()
+    if (!s) return outlineRows(idx, folderId, expanded)
+    return items
+      .filter((i) => [i.title, i.url ?? '', i.tags.join(' '), i.notes ?? ''].join(' ').toLowerCase().includes(s))
+      .map((item) => ({ item, depth: 0 }))
+  })
+  const selecting = $derived(selected.size > 0)
+
+  function toggleExpand(id: number) {
+    if (expanded.has(id)) expanded.delete(id)
+    else expanded.add(id)
+  }
+
+  // 选择栏浮在底部时，把提示条也往上推
+  $effect(() => {
+    document.documentElement.style.setProperty('--bottom-nav-h', selecting && !searchMode ? '56px' : '0px')
+    return () => document.documentElement.style.removeProperty('--bottom-nav-h')
   })
 
   $effect(() => {
@@ -225,6 +226,13 @@
     if (name) await create({ type: 'folder', title: name, url: '', tags: [], notes: '', parentId: folderId })
   }
 
+  function toggleSearch() {
+    searchOpen = !searchOpen
+    if (searchOpen) queueMicrotask(() => document.querySelector<HTMLInputElement>('[data-search-input]')?.focus())
+    else if (searchMode) exitSearch()
+    else q = ''
+  }
+
   function submitSearch() {
     const s = q.trim()
     if (!s) return
@@ -235,6 +243,7 @@
   function exitSearch() {
     const r = returnFolder ?? { library: slug, folderId }
     q = ''
+    searchOpen = false
     navigate(r.folderId ? `/lib/${r.library}/f/${r.folderId}` : `/lib/${r.library}`)
   }
 
@@ -306,7 +315,7 @@
   }
 
   function toggleSelect(id: number, e: MouseEvent) {
-    const list = shown.map((i) => i.id)
+    const list = rows.map((r) => r.item.id)
     if (e.shiftKey && anchor !== null) {
       const a = list.indexOf(anchor)
       const b = list.indexOf(id)
@@ -316,27 +325,17 @@
     anchor = id
   }
 
+  function longPressSelect(id: number) {
+    selected.add(id)
+    anchor = id
+  }
+
   function startEdit(it: Item) {
     if (readonly) return
     editing = it.id
-    editTitle = it.title
-    editUrl = it.url ?? ''
-    editTags = it.tags.join(', ')
   }
 
-  async function saveEdit(e?: Event) {
-    e?.preventDefault()
-    const id = editing
-    if (id === null) return
-    const it = idx?.byId.get(id)?.item
-    if (!it) return
-    const body: { title?: string; url?: string; tags?: string[] } = {}
-    if (editTitle.trim() !== it.title) body.title = editTitle.trim()
-    if (it.type === 'bookmark') {
-      if (editUrl.trim() !== it.url) body.url = editUrl.trim()
-      const tg = parseTags(editTags)
-      if (tg.join(',') !== it.tags.join(',')) body.tags = tg
-    }
+  async function saveEdit(id: number, body: ItemPatch) {
     if (Object.keys(body).length && !(await update(id, body))) return
     editing = null
   }
@@ -345,7 +344,7 @@
     if (it.type === 'folder') return navigate(`/lib/${slug}/f/${it.id}`)
     if (!it.url) return
     recordVisit(slug, it.id)
-    if (newTab || app.settings?.openInNewTab) window.open(it.url, '_blank', 'noopener')
+    if (newTab || opensInNewTab()) window.open(it.url, '_blank', 'noopener')
     else location.assign(it.url)
   }
 
@@ -353,13 +352,14 @@
     const ids = selected.has(it.id) && selected.size > 1 ? [...selected] : [it.id]
     const many = ids.length > 1
     const ro = readonly
+    const inList = rows.some((r) => r.item.id === it.id)
     const items: MenuItem[] = []
     if (!many) {
       items.push({ label: t('menu.open'), icon: it.type === 'folder' ? 'folder-open' : 'link', run: () => open(it) })
       if (it.type === 'bookmark') {
         items.push({ label: t('menu.openNewTab'), icon: 'external', run: () => open(it, true) })
         items.push({ label: t('menu.copyUrl'), icon: 'copy', run: () => navigator.clipboard?.writeText(it.url ?? '').then(() => toast(t('common.copied'))) })
-        items.push({ label: t('menu.edit'), icon: 'edit', disabled: ro, run: () => startEdit(it) })
+        if (inList) items.push({ label: t('menu.edit'), icon: 'edit', disabled: ro, run: () => startEdit(it) })
         items.push({ label: t('menu.editDetails'), icon: 'edit', disabled: ro, run: () => (dialog = { kind: 'edit', item: it }) })
       } else {
         items.push({ label: t('menu.rename'), icon: 'edit', disabled: ro, run: () => rename(it) })
@@ -407,7 +407,11 @@
   // ---------- 键盘 ----------
 
   function cursorItem(): Item | undefined {
-    return shown[cursor]
+    return rows[cursor]?.item
+  }
+  function selectAll(e: KeyboardEvent) {
+    e.preventDefault()
+    for (const r of rows) selected.add(r.item.id)
   }
   function focusRow() {
     queueMicrotask(() => document.querySelector<HTMLElement>(`[data-row-index="${cursor}"]`)?.scrollIntoView({ block: 'nearest' }))
@@ -415,7 +419,7 @@
   $effect(() =>
     useShortcuts({
       j: () => {
-        cursor = Math.min(shown.length - 1, cursor + 1)
+        cursor = Math.min(rows.length - 1, cursor + 1)
         focusRow()
       },
       k: () => {
@@ -424,7 +428,7 @@
       },
       ArrowDown: (e) => {
         e.preventDefault()
-        cursor = Math.min(shown.length - 1, cursor + 1)
+        cursor = Math.min(rows.length - 1, cursor + 1)
         focusRow()
       },
       ArrowUp: (e) => {
@@ -432,6 +436,16 @@
         cursor = Math.max(0, cursor - 1)
         focusRow()
       },
+      ArrowRight: () => {
+        const it = cursorItem()
+        if (it?.type === 'folder') expanded.add(it.id)
+      },
+      ArrowLeft: () => {
+        const it = cursorItem()
+        if (it?.type === 'folder') expanded.delete(it.id)
+      },
+      'Ctrl+a': selectAll,
+      'Meta+a': selectAll,
       Enter: () => {
         const it = cursorItem()
         if (it) open(it)
@@ -458,34 +472,34 @@
     }),
   )
 
-  const selectedItems = $derived([...selected].map((id) => idx?.byId.get(id)?.item).filter((x): x is Item => !!x))
-  const allChecked = $derived(shown.length > 0 && shown.every((i) => selected.has(i.id)))
+  const syncTitle = $derived(
+    lib ? `${lib.lastSyncAt ? t('sync.last', { actor: lib.lastSyncActor ?? '?', time: fmtRelative(lib.lastSyncAt) }) : t('sync.never')} · ${t('sync.counts', { b: lib.bookmarkCount, f: lib.folderCount })}${lib.pendingCount ? ' · ' + t('sync.pending', { n: lib.pendingCount }) : ''}` : '',
+  )
   const dialogItems = $derived(
     dialog && (dialog.kind === 'move' || dialog.kind === 'tag') ? dialog.ids.map((id) => idx?.byId.get(id)?.item).filter((x): x is Item => !!x) : [],
   )
 </script>
 
-<div class="workspace">
-  <header class="wtop">
+<div class="workspace" style:--wtop-h="{headH}px">
+  <header class="wtop" bind:clientHeight={headH}>
     <div class="wtop-row">
       {#if folderId !== 0}
         <button class="icon-btn narrow-only" aria-label={t('common.back')} onclick={goUp}><Icon name="arrowLeft" /></button>
       {/if}
       <a class="brand wide-only" href="/lib/{slug}"><Icon name="bookmark" size={20} /><span>shelfmark</span></a>
-      <nav class="crumbs" aria-label={t('manager.breadcrumb')}>
-        <button class="icon-btn narrow-only" aria-label={t('tree.label')} onclick={openTree}><Icon name="folder" size={18} /></button>
-        <a href="/lib/{slug}">{lib?.name ?? slug}</a>
-        {#if folderNode}
-          {#each folderNode.pathIds as pid, i (pid)}
-            <Icon name="chevron" size={14} />
-            <a href="/lib/{slug}/f/{pid}">{folderNode.path[i]}</a>
-          {/each}
-          <Icon name="chevron" size={14} />
-          <span class="cur">{folderNode.item.title}</span>
-        {/if}
-      </nav>
+      {#if idx}
+        <Breadcrumbs {slug} name={lib?.name ?? slug} {idx} {folderId} />
+      {:else}
+        <span class="crumbs-ph">{lib?.name ?? slug}</span>
+      {/if}
       <div class="spacer"></div>
-      <form class="wsearch" role="search" onsubmit={(e) => { e.preventDefault(); if (!searchMode) submitSearch() }}>
+      {#if lib}
+        <a class="icon-btn wide-only sync-ic" class:warn={lib.pendingCount} href="/history/{slug}" title={syncTitle} aria-label={syncTitle} data-testid="sync-icon">
+          <Icon name="sync" size={17} />
+        </a>
+      {/if}
+      <button class="icon-btn narrow-only" class:on={searchOpen || searchMode} aria-label={t('nav.search')} onclick={toggleSearch} data-testid="search-toggle"><Icon name="search" /></button>
+      <form class="wsearch" class:open={searchOpen || searchMode} role="search" onsubmit={(e) => { e.preventDefault(); if (!searchMode) submitSearch() }}>
         <Icon name="search" size={16} />
         <input
           bind:value={q}
@@ -501,22 +515,20 @@
           <button class="btn small" type="submit">{t('search.all')}</button>
         {/if}
       </form>
-      <button class="btn primary" onclick={newMenu} disabled={readonly} data-testid="new-bookmark">
+      <button class="btn primary new" onclick={newMenu} disabled={readonly} aria-label={t('manager.newBookmark')} data-testid="new-bookmark">
         <Icon name="plus" size={16} /><span class="wide-only">{t('manager.newBookmark')}</span>
       </button>
       <button class="icon-btn" aria-label={t('common.more')} onclick={moreMenu} data-testid="manager-more"><Icon name="more" /></button>
     </div>
-    {#if lib}
-      <div class="sync" data-testid="sync-status">
-        {#if lib.lock?.fresh}
+    {#if idx && lib}
+      <div class="wide-only"><BookmarkBar {slug} {idx} current={folderId} oncontext={context} /></div>
+    {/if}
+    {#if lib?.lock?.fresh || entry?.stale}
+      <div class="status" data-testid="sync-status">
+        {#if lib?.lock?.fresh}
           <span class="locked"><Icon name="lock" size={15} /> {t('lock.syncing', { actor: lib.lock.actor, time: fmtRelative(lib.lock.since) })}</span>
           <button class="btn small" onclick={forceUnlock} data-testid="force-unlock">{t('lock.force')}</button>
-        {:else}
-          <Icon name="sync" size={15} />
-          <span>{lib.lastSyncAt ? t('sync.last', { actor: lib.lastSyncActor ?? '?', time: fmtRelative(lib.lastSyncAt) }) : t('sync.never')}</span>
         {/if}
-        <span class="hint">· {t('sync.counts', { b: lib.bookmarkCount, f: lib.folderCount })}</span>
-        {#if lib.pendingCount}<a href="/history/{slug}" class="badge warn">{t('sync.pending', { n: lib.pendingCount })}</a>{/if}
         {#if entry?.stale}<span class="badge">{t('manager.cached')}</span>{/if}
       </div>
     {/if}
@@ -536,78 +548,33 @@
         {#if searchMode}
           <SearchResults q={q} onback={exitSearch} />
         {:else}
-          <div class="listbar">
-            <input type="checkbox" checked={allChecked} aria-label={t('manager.selectAll')} onchange={() => (allChecked ? selected.clear() : shown.forEach((i) => selected.add(i.id)))} />
-            {#if selected.size}
-              <div class="selbar" data-testid="selection-bar">
-                <span>{t('manager.selected', { n: selected.size })}</span>
-                <button class="btn small" disabled={readonly} onclick={() => (dialog = { kind: 'move', ids: [...selected] })}><Icon name="move" size={15} />{t('manager.moveTo')}</button>
-                <button class="btn small" disabled={readonly} onclick={() => (dialog = { kind: 'tag', ids: [...selected] })}><Icon name="tag" size={15} />{t('menu.tags')}</button>
-                <button class="btn small" disabled={readonly} onclick={() => remove([...selected])} data-testid="bulk-delete"><Icon name="trash" size={15} />{t('menu.delete')}</button>
-                <button class="btn small ghost" onclick={() => selected.clear()}>{t('common.cancel')}</button>
-              </div>
-            {:else}
-              <span class="hint">{t('manager.items', { n: shown.length })}</span>
-            {/if}
-          </div>
-
           <div class="rows" role="list" data-testid="item-list">
-          {#if !shown.length}
-            <p class="hint empty">{q.trim() ? t('manager.noMatch') : t('manager.emptyFolder')}</p>
-          {/if}
-          {#each shown as it, i (it.id)}
-            <div
-              class="item"
-              class:sel={selected.has(it.id)}
-              class:cursor={cursor === i}
-              role="listitem"
-              data-row-index={i}
-              data-drop-id={it.id}
-              data-drop-folder={it.type === 'folder' ? '1' : '0'}
-              data-testid="item-row"
-              data-title={it.title}
-              use:dragSource={dragOpts(it.id)}
-              oncontextmenu={(e) => context(e, it)}
-              ondblclick={(e) => !(e.target as HTMLElement).closest('a,input,button') && startEdit(it)}
-            >
-              <input type="checkbox" checked={selected.has(it.id)} onclick={(e) => toggleSelect(it.id, e)} aria-label={t('manager.select', { title: it.title })} />
-              {#if !readonly}<span class="grip" data-drag-handle aria-hidden="true"><Icon name="grip" size={16} /></span>{/if}
-              <Favicon item={it} size={20} />
-              {#if editing === it.id}
-                <form class="edit" onsubmit={saveEdit} data-testid="inline-edit">
-                  <!-- svelte-ignore a11y_autofocus -->
-                  <input bind:value={editTitle} aria-label={t('field.title')} autofocus onkeydown={(e) => e.key === 'Escape' && (editing = null)} />
-                  {#if it.type === 'bookmark'}
-                    <input bind:value={editUrl} aria-label={t('field.url')} onkeydown={(e) => e.key === 'Escape' && (editing = null)} />
-                    <input bind:value={editTags} aria-label={t('field.tags')} placeholder={t('field.tagsHint')} onkeydown={(e) => e.key === 'Escape' && (editing = null)} />
-                  {/if}
-                  <div class="row">
-                    <button class="btn small primary" type="submit">{t('common.save')}</button>
-                    <button class="btn small" type="button" onclick={() => (editing = null)}>{t('common.cancel')}</button>
-                  </div>
-                </form>
-              {:else}
-                <div class="info">
-                  {#if it.type === 'folder'}
-                    <a class="title ellipsis" href="/lib/{slug}/f/{it.id}" draggable="false">{it.title || t('item.untitled')}</a>
-                    <span class="meta hint">{t('manager.folderCount', { n: childrenOf(idx, it.id).length })}</span>
-                  {:else}
-                    <BookmarkLink item={it} library={slug} class="title ellipsis">{it.title || it.url}</BookmarkLink>
-                    <span class="meta">
-                      <span class="host hint ellipsis">{hostOf(it.url)}</span>
-                      {#each it.tags as tg (tg)}<a class="tag" href="/search?q={encodeURIComponent('#' + tg)}">#{tg}</a>{/each}
-                      {#if it.health && ['broken', 'unreachable'].includes(it.health.status)}
-                        <span class="badge danger" title={it.health.error ?? ''}>{it.health.status === 'broken' ? t('health.broken') : t('health.unreachable')}</span>
-                      {:else if it.health?.status === 'redirect'}
-                        <span class="badge warn" title={it.health.finalUrl ?? ''}>{t('health.redirect')}</span>
-                      {/if}
-                    </span>
-                  {/if}
-                </div>
-                <button class="icon-btn" aria-label={t('common.more')} onclick={(e) => context(e, it)} data-testid="row-menu"><Icon name="more" /></button>
-              {/if}
-            </div>
-          {/each}
+            {#if !rows.length}
+              <p class="hint empty">{q.trim() ? t('manager.noMatch') : t('manager.emptyFolder')}</p>
+            {/if}
+            {#each rows as r, i (r.item.id)}
+              {@const it = r.item}
+              <ItemRow
+                item={it}
+                {slug}
+                depth={r.depth}
+                index={i}
+                count={it.type === 'folder' ? childrenOf(idx, it.id).length : 0}
+                selected={selected.has(it.id)}
+                {selecting}
+                cursor={cursor === i}
+                editing={editing === it.id}
+                expanded={expanded.has(it.id)}
+                {readonly}
+                drag={dragOpts(it.id)}
+                onselect={(e) => toggleSelect(it.id, e)}
+                ontoggle={() => toggleExpand(it.id)}
+                onmenu={(e) => context(e, it)}
+                onsave={(patch) => void saveEdit(it.id, patch)}
+                oncancel={() => (editing = null)}
+                onlongpress={() => longPressSelect(it.id)}
+              />
+            {/each}
           </div>
         {/if}
       </section>
@@ -616,6 +583,18 @@
     <p class="hint">{t('common.loading')}</p>
   {/if}
 </div>
+
+{#if selecting && !searchMode}
+  <div class="selbar" role="toolbar" data-testid="selection-bar">
+    <span class="n">{t('manager.selected', { n: selected.size })}</span>
+    <button class="btn small ghost" onclick={() => rows.forEach((r) => selected.add(r.item.id))}>{t('manager.selectAll')}</button>
+    <span class="spacer"></span>
+    <button class="btn small" disabled={readonly} onclick={() => (dialog = { kind: 'move', ids: [...selected] })}><Icon name="move" size={15} /><span>{t('manager.moveTo')}</span></button>
+    <button class="btn small" disabled={readonly} onclick={() => (dialog = { kind: 'tag', ids: [...selected] })}><Icon name="tag" size={15} /><span>{t('menu.tags')}</span></button>
+    <button class="btn small" disabled={readonly} onclick={() => remove([...selected])} data-testid="bulk-delete"><Icon name="trash" size={15} /><span>{t('menu.delete')}</span></button>
+    <button class="icon-btn" aria-label={t('common.cancel')} onclick={() => selected.clear()}><Icon name="close" size={16} /></button>
+  </div>
+{/if}
 
 {#if saveOpen}
   <SaveSheet
@@ -627,14 +606,6 @@
     onclose={closeSave}
     onsaved={onSaved}
   />
-{/if}
-
-{#if treeOpen}
-  <Dialog title={lib?.name ?? ''} onclose={() => (treeOpen = false)} wide>
-    {#if idx && lib}
-      <FolderTree {slug} name={lib.name} {idx} current={folderId} {expanded} {readonly} drag={dragOpts} oncontext={context} />
-    {/if}
-  </Dialog>
 {/if}
 
 {#if dialog?.kind === 'new'}
@@ -675,14 +646,14 @@
   .workspace {
     max-width: 1280px;
     margin: 0 auto;
-    padding: 0 16px 40px;
+    padding: 0 16px calc(40px + var(--bottom-nav-h));
   }
   .wtop {
     position: sticky;
     top: 0;
     z-index: 20;
     margin: 0 -16px;
-    padding: 8px 16px;
+    padding: 6px 16px 4px;
     background: var(--surface);
     border-bottom: 1px solid var(--border);
   }
@@ -690,7 +661,7 @@
     display: flex;
     align-items: center;
     gap: 8px;
-    min-height: 40px;
+    min-height: 36px;
   }
   .brand {
     display: flex;
@@ -699,38 +670,35 @@
     font-weight: 700;
     color: var(--text);
     text-decoration: none;
+    margin-right: 6px;
   }
   .brand :global(.icon) {
     color: var(--accent);
   }
-  .crumbs {
-    display: flex;
-    align-items: center;
-    gap: 4px;
-    min-width: 0;
-    color: var(--text-3);
-    font-size: 0.92rem;
-    overflow: hidden;
-    white-space: nowrap;
-  }
-  .crumbs a {
-    padding: 2px 4px;
-    border-radius: 4px;
+  .crumbs-ph {
     color: var(--text-2);
-    text-decoration: none;
+    font-size: 0.92rem;
   }
-  .crumbs .cur {
-    color: var(--text);
-    font-weight: 600;
-    overflow: hidden;
-    text-overflow: ellipsis;
+  .sync-ic {
+    position: relative;
+    color: var(--text-3);
+  }
+  .sync-ic.warn::after {
+    content: '';
+    position: absolute;
+    top: 6px;
+    right: 6px;
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    background: var(--warn);
   }
   .wsearch {
     display: flex;
     align-items: center;
     gap: 6px;
     min-width: 180px;
-    max-width: 380px;
+    max-width: 340px;
     flex: 1;
     background: var(--surface-2);
     border: 1px solid var(--border);
@@ -743,19 +711,24 @@
     min-width: 0;
     border: 0;
     background: none;
-    min-height: 32px;
+    min-height: 30px;
+    padding: 4px 6px;
   }
   .wsearch input:focus {
     outline: none;
   }
-  .sync {
+  .new {
+    min-height: 32px;
+    padding: 4px 12px;
+  }
+  .status {
     display: flex;
     flex-wrap: wrap;
     align-items: center;
-    gap: 6px;
+    gap: 8px;
     font-size: 0.85rem;
     color: var(--text-2);
-    margin: 6px 0 2px;
+    margin: 4px 0 2px;
   }
   .locked {
     color: var(--warn);
@@ -766,148 +739,106 @@
   }
   .cols {
     display: grid;
-    grid-template-columns: 260px 1fr;
-    gap: 16px;
+    grid-template-columns: 240px 1fr;
+    gap: 12px;
     align-items: start;
+    margin-top: 10px;
   }
   .side {
     position: sticky;
-    top: 96px;
-    max-height: calc(100vh - 120px);
+    top: calc(var(--wtop-h) + 10px);
+    max-height: calc(100vh - var(--wtop-h) - 20px);
     overflow-y: auto;
     background: var(--surface);
     border: 1px solid var(--border);
     border-radius: var(--radius-lg);
-    padding: 6px;
+    padding: 4px;
   }
   .main {
     min-width: 0;
   }
-  .listbar {
-    display: flex;
-    align-items: center;
-    gap: 10px;
-    padding: 6px 12px;
-    min-height: 46px;
-    background: var(--surface);
-    border: 1px solid var(--border);
-    border-bottom: 0;
-    border-radius: var(--radius-lg) var(--radius-lg) 0 0;
-  }
-  .selbar {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 6px;
-    align-items: center;
-  }
   .rows {
     background: var(--surface);
     border: 1px solid var(--border);
-    border-radius: 0 0 var(--radius-lg) var(--radius-lg);
+    border-radius: var(--radius-lg);
+    padding: 4px;
   }
   .empty {
     padding: 24px;
     text-align: center;
   }
-  .item {
+  .selbar {
+    position: fixed;
+    z-index: 25;
+    left: 50%;
+    bottom: calc(10px + env(safe-area-inset-bottom));
+    transform: translateX(-50%);
+    width: min(640px, calc(100% - 20px));
     display: flex;
     align-items: center;
-    gap: 10px;
-    padding: 6px 8px 6px 12px;
-    border-top: 1px solid var(--border);
-    min-height: 52px;
-  }
-  .item:first-of-type {
-    border-top: 0;
-  }
-  .item:hover {
-    background: var(--hover);
-  }
-  .item.sel {
-    background: var(--accent-soft);
-  }
-  .item.cursor {
-    box-shadow: inset 3px 0 0 var(--accent);
-  }
-  .grip {
-    color: var(--text-3);
-    display: inline-flex;
-    padding: 6px 2px;
-    opacity: 0.35;
-  }
-  .item:hover .grip {
-    opacity: 1;
-  }
-  @media (hover: none) {
-    .grip {
-      opacity: 0.8;
-      padding: 10px 4px;
-    }
-  }
-  .info {
-    flex: 1;
-    min-width: 0;
-    display: flex;
-    flex-direction: column;
-  }
-  .info :global(.title) {
-    color: var(--text);
-    font-weight: 500;
-    display: block;
-  }
-  .meta {
-    display: flex;
     gap: 6px;
-    align-items: center;
-    font-size: 0.8rem;
-    min-width: 0;
-    flex-wrap: wrap;
+    padding: 6px 6px 6px 14px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-lg);
+    box-shadow: var(--shadow-lg);
   }
-  .host {
-    max-width: 260px;
-  }
-  .edit {
-    flex: 1;
-    display: flex;
-    flex-direction: column;
-    gap: 6px;
-  }
-  .edit input {
-    width: 100%;
+  .selbar .n {
+    font-weight: 600;
+    white-space: nowrap;
   }
   @media (max-width: 899px) {
     .workspace {
-      padding: 0 10px 30px;
+      padding: 0 8px calc(30px + var(--bottom-nav-h));
     }
     .wtop {
-      margin: 0 -10px;
-      padding: 6px 10px;
+      margin: 0 -8px;
+      padding: 4px 6px;
     }
     .wtop-row {
       flex-wrap: wrap;
-      gap: 6px;
+      gap: 2px;
     }
-    .brand {
-      display: none;
-    }
-    .crumbs {
+    .wtop-row > :global(.crumbs),
+    .crumbs-ph {
       flex: 1;
     }
     .wsearch {
+      display: none;
       order: 10;
       flex-basis: 100%;
       max-width: none;
       min-width: 0;
+      margin: 4px 2px 2px;
     }
-    .sync {
-      margin: 4px 0 0;
+    .wsearch.open {
+      display: flex;
+    }
+    .icon-btn.on {
+      color: var(--accent);
+    }
+    .new {
+      width: 32px;
+      min-height: 32px;
+      padding: 0;
+      margin: 0 2px;
     }
     .cols {
       grid-template-columns: 1fr;
+      margin-top: 6px;
     }
-    .item {
-      padding-left: 8px;
-      gap: 8px;
+    .rows {
+      padding: 2px 4px;
+    }
+    .selbar {
+      bottom: 0;
+      width: 100%;
+      border-radius: 0;
+      border-width: 1px 0 0;
+      padding: 6px 8px calc(6px + env(safe-area-inset-bottom)) 12px;
+    }
+    .selbar .btn span {
+      display: none;
     }
   }
 </style>

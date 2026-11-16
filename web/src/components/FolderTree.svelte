@@ -89,8 +89,8 @@
     align-items: center;
     gap: 2px;
     border-radius: 6px;
-    padding: 1px 6px 1px 6px;
-    min-height: 32px;
+    padding: 0 6px;
+    min-height: 28px;
   }
   .node:hover {
     background: var(--hover);
@@ -109,7 +109,8 @@
     gap: 6px;
     color: var(--text);
     text-decoration: none;
-    padding: 4px 2px;
+    padding: 3px 2px;
+    font-size: 0.92rem;
   }
   .node a :global(.icon) {
     color: var(--folder);

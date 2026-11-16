@@ -132,18 +132,35 @@ test('设置页：令牌、Floccus 向导、主题和语言', async ({ page }) =
 test.describe('窄屏', () => {
   test.use({ viewport: { width: 390, height: 844 }, hasTouch: true })
 
-  test('单页工作区、文件夹抽屉、“移动到…”对话框', async ({ page }) => {
+  test('单页工作区、原地展开、面包屑跳转、“移动到…”对话框', async ({ page }) => {
     await login(page, '/lib/bookmarks')
     await expect(page.locator('.bottomnav')).toHaveCount(0)
     await expect(page.locator('.topnav')).toHaveCount(0)
     await expect(page.locator('aside.side')).toBeHidden()
-    await expect(page.getByTestId('workspace-search')).toBeVisible()
-    await page.getByRole('button', { name: '文件夹', exact: true }).click()
-    const sheet = page.getByRole('dialog', { name: '书签' })
-    await expect(sheet.getByTestId('tree-root')).toBeVisible()
-    await sheet.getByRole('button', { name: '关闭' }).click()
-    await page.locator('[data-testid=item-row][data-title="Example Domain"]').getByTestId('row-menu').click()
-    await page.getByRole('menuitem', { name: '移动到…' }).click()
+    await expect(page.getByTestId('bookmark-bar')).toBeHidden()
+    await expect(page.getByTestId('workspace-search')).toBeHidden()
+    await page.getByTestId('search-toggle').tap()
+    await expect(page.getByTestId('workspace-search')).toBeFocused()
+    await page.getByTestId('search-toggle').tap()
+    await expect(page.getByTestId('workspace-search')).toBeHidden()
+
+    await row(page, '工具').getByTestId('row-toggle').tap()
+    await expect(row(page, '在线工具')).toHaveAttribute('data-depth', '1')
+    await row(page, '在线工具').locator('.title').tap()
+    await expect(row(page, 'Regex101')).toBeVisible()
+    await page.getByTestId('crumb-sep').first().tap()
+    await page.getByTestId('folder-menu').locator('a.mi', { hasText: '阅读' }).tap()
+    await expect(row(page, 'Lobsters')).toBeVisible()
+    await page.getByRole('button', { name: '返回' }).tap()
+    await expect(page).toHaveURL(/\/lib\/bookmarks$/)
+
+    // 列表展开后变长：先滚到位，避免滚动事件把刚打开的菜单关掉
+    const more = row(page, 'Example Domain').getByTestId('row-menu')
+    await more.scrollIntoViewIfNeeded()
+    await expect(async () => {
+      await more.click()
+      await page.getByRole('menuitem', { name: '移动到…' }).click({ timeout: 1000 })
+    }).toPass()
     await page.getByTestId('move-dialog').getByTestId('folder-option').filter({ hasText: '阅读' }).click()
     await page.getByRole('button', { name: '移动到这里' }).click()
     await expect(page.getByTestId('toast').filter({ hasText: '已移动' })).toBeVisible()
