@@ -508,6 +508,10 @@ func TestWebFlowRevisionsAndRestore(t *testing.T) {
 	// tags, settings, jobs, misc
 	e.expect(e.api("PATCH", "/api/v1/tags/golang", map[string]string{"name": "go"}), 204)
 	e.expect(e.api("GET", "/api/v1/tags", nil), 200)
+	var defaults struct{ OpenInNewTab bool }
+	if e.expect(e.api("GET", "/api/v1/settings", nil), 200).json(t, &defaults); !defaults.OpenInNewTab {
+		t.Fatal("openInNewTab should default to true")
+	}
 	e.expect(e.api("PATCH", "/api/v1/settings", map[string]any{"theme": "dark", "defaultSave": map[string]any{"library": "bookmarks", "folderId": folder.Item.ID}}), 200)
 	e.expect(e.api("PATCH", "/api/v1/settings", map[string]any{"theme": "neon"}), 422)
 	var st struct {

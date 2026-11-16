@@ -135,7 +135,6 @@ class NewTab {
         class: 'tile',
         href: link.url,
         title: `${link.title}\n${link.url}`,
-        ...(this.snapshot?.settings?.openInNewTab ? { target: '_blank', rel: 'noopener' } : {}),
       },
       icon,
       h('span', { class: 'label' }, link.title || link.url),

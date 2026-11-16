@@ -37,7 +37,7 @@ function defaultSettings() {
   return {
     language: 'auto',
     theme: 'system',
-    openInNewTab: false,
+    openInNewTab: true,
     defaultSave: null,
     recentSaveTargets: [],
     startLocation: { kind: 'folder', library: 'bookmarks', folderId: 2 },

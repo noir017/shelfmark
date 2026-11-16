@@ -146,7 +146,7 @@ export function defaultSettings(): Settings {
   return {
     language: 'auto',
     theme: 'system',
-    openInNewTab: false,
+    openInNewTab: true,
     defaultSave: null,
     recentSaveTargets: [],
     startLocation: { kind: 'last' },

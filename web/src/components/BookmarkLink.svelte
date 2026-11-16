@@ -1,7 +1,8 @@
 <script lang="ts">
   import type { Snippet } from 'svelte'
+  import type { HTMLAnchorAttributes } from 'svelte/elements'
   import type { Item } from '../api/types'
-  import { app } from '../lib/stores/app.svelte'
+  import { opensInNewTab } from '../lib/stores/app.svelte'
   import { recordVisit } from '../lib/visits'
 
   let {
@@ -9,13 +10,15 @@
     library,
     children,
     class: cls = '',
-  }: { item: Pick<Item, 'id' | 'url' | 'title'>; library: string; children: Snippet; class?: string } = $props()
+    ...rest
+  }: { item: Pick<Item, 'id' | 'url' | 'title'>; library: string; children: Snippet; class?: string } & Omit<HTMLAnchorAttributes, 'href' | 'class'> = $props()
 
-  const newTab = $derived(!!app.settings?.openInNewTab)
+  const newTab = $derived(opensInNewTab())
   const visit = () => recordVisit(library, item.id)
 </script>
 
 <a
+  {...rest}
   class={cls}
   href={item.url ?? '#'}
   target={newTab ? '_blank' : undefined}

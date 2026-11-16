@@ -1393,6 +1393,10 @@ export interface components {
             language: "auto" | "zh-CN" | "en";
             /** @enum {string} */
             theme: "system" | "light" | "dark";
+            /**
+             * @description 网页里点书签用新标签页打开。插件新标签页不跟这个设置，始终在当前页打开
+             * @default true
+             */
             openInNewTab: boolean;
             defaultSave: components["schemas"]["SaveTarget"] | null;
             /** @description 最近收藏到的位置，服务端在每次 quick-save 后更新 */

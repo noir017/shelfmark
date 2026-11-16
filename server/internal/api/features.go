@@ -64,7 +64,7 @@ type settings struct {
 }
 
 func defaultSettings() *settings {
-	return &settings{Language: "auto", Theme: "system", RecentSaveTargets: []saveTarget{},
+	return &settings{Language: "auto", Theme: "system", OpenInNewTab: true, RecentSaveTargets: []saveTarget{},
 		StartLocation: startLocation{Kind: "last"},
 		StartPage:     startPage{ShowSearch: true, ShowRecent: true, RecentCount: 10, ShowFrequent: true, FrequentCount: 10, Sections: []startSection{}}}
 }

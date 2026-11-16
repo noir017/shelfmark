@@ -141,6 +141,11 @@ export function logout() {
   location.href = '/cdn-cgi/access/logout'
 }
 
+/** 书签默认用新标签页打开；设置还没加载时也按新标签页 */
+export function opensInNewTab(): boolean {
+  return app.settings?.openInNewTab ?? true
+}
+
 export function defaultLibrary(): string | null {
   const d = app.settings?.defaultSave?.library
   if (d && app.libraries.some((l) => l.slug === d)) return d
