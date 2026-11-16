@@ -52,6 +52,24 @@ test('多选批量移动', async ({ page }) => {
   await expect(row(page, '内网测试站')).toHaveCount(0)
 })
 
+test('文件夹选择器默认折叠，展开后能选深层文件夹', async ({ page }) => {
+  await login(page, '/lib/bookmarks')
+  await rowMenu(page, 'Example Domain', '移动到…')
+  const dlg = page.getByTestId('move-dialog')
+  const opt = (name: string) => dlg.getByTestId('folder-option').filter({ hasText: name })
+  await expect(opt('工具')).toBeVisible()
+  await expect(opt('在线工具')).toHaveCount(0)
+  await dlg.locator('.opt').filter({ has: page.getByRole('option', { name: '工具', exact: true }) }).getByTestId('folder-toggle').click()
+  await opt('在线工具').click()
+  await page.getByRole('button', { name: '移动到这里' }).click()
+  await expect(page.getByTestId('toast').filter({ hasText: '已移动' })).toBeVisible()
+  // 搜索时平铺显示带路径的结果
+  await rowMenu(page, 'Example（newsletter 链接）', '移动到…')
+  await expect(opt('在线工具')).toHaveCount(0)
+  await dlg.getByTestId('picker-filter').fill('在线')
+  await expect(opt('工具 / 在线工具')).toBeVisible()
+})
+
 test('423：库被 Floccus 锁定时提示并自动重试', async ({ page, request }) => {
   await login(page, '/lib/bookmarks')
   await mock(request, 'lock', { library: 'bookmarks', durationMs: 1500, actor: 'Floccus · 笔记本' })

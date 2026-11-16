@@ -27,6 +27,7 @@
     editing = false,
     expanded = false,
     readonly = false,
+    pinned = false,
     drag,
     onselect,
     ontoggle,
@@ -48,6 +49,8 @@
     editing?: boolean
     expanded?: boolean
     readonly?: boolean
+    /** 冻结在列表顶部的那份副本 */
+    pinned?: boolean
     drag: DragSourceOptions
     onselect: (e: MouseEvent) => void
     ontoggle: () => void
@@ -71,13 +74,17 @@
     })
   })
 
-  // 修饰键点击、选择模式下的触屏点击：选择而不是打开
+  // 修饰键点击、选择模式下的触屏点击：选择而不是打开。触屏点文件夹：展开/折叠，不进入（进入用 ⋯ 菜单或面包屑）
   function onclick(e: MouseEvent) {
     if ((e.target as HTMLElement).closest('input, button, form')) return
     if (e.ctrlKey || e.metaKey || e.shiftKey || (selecting && pointer !== 'mouse')) {
       e.preventDefault()
       e.stopPropagation()
       onselect(e)
+    } else if (it.type === 'folder' && pointer !== 'mouse' && e.detail !== 0) {
+      e.preventDefault()
+      e.stopPropagation()
+      ontoggle()
     }
   }
 
@@ -108,12 +115,14 @@
   class:selecting
   class:cursor
   class:editing
+  class:pinned
   style:--depth={depth}
   role="listitem"
-  data-row-index={index}
+  data-row-index={pinned ? undefined : index}
   data-drop-id={it.id}
   data-drop-folder={it.type === 'folder' ? '1' : '0'}
-  data-testid="item-row"
+  data-drop-inside={pinned ? '' : undefined}
+  data-testid={pinned ? 'pinned-row' : 'item-row'}
   data-title={it.title}
   data-depth={depth}
   use:dragSource={drag}
@@ -185,6 +194,17 @@
   }
   .item.cursor {
     box-shadow: inset 2px 0 0 var(--accent);
+  }
+  .item {
+    scroll-margin-top: calc(var(--wtop-h, 0px) + 8px);
+  }
+  .item.pinned {
+    background: var(--surface);
+    border-radius: 0;
+    box-shadow: 0 1px 0 var(--border), 0 2px 6px rgba(16, 24, 40, 0.08);
+  }
+  .item.pinned:hover {
+    background: var(--hover);
   }
   .item.editing {
     align-items: flex-start;

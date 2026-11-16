@@ -1,9 +1,11 @@
 <script lang="ts">
+  import { untrack } from 'svelte'
+  import { SvelteSet } from 'svelte/reactivity'
   import type { SaveTarget } from '../api/types'
   import { t } from '../lib/i18n/index.svelte'
   import { app } from '../lib/stores/app.svelte'
   import { loadTree, treeEntry } from '../lib/stores/trees.svelte'
-  import { folderList, isAncestorOrSelf } from '../lib/tree'
+  import { folderList, hasSubfolders, isAncestorOrSelf, visibleFolders } from '../lib/tree'
   import Icon from './Icon.svelte'
 
   let {
@@ -30,13 +32,31 @@
     void loadTree(library)
   })
   const folders = $derived(entry.index ? folderList(entry.index, t('folder.root')) : [])
-  const filtered = $derived.by(() => {
-    const s = q.trim().toLowerCase()
-    return folders.filter((f) => {
-      if (entry.index && exclude.some((x) => f.id !== 0 && isAncestorOrSelf(entry.index!, x, f.id))) return false
-      return !s || f.path.join(' / ').toLowerCase().includes(s) || f.title.toLowerCase().includes(s)
-    })
+
+  // 默认折叠：只显示根和第一层；选中的文件夹自动展开到它所在的位置。搜索时平铺显示。
+  const open = new SvelteSet<number>()
+  $effect(() => {
+    void library
+    untrack(() => open.clear())
   })
+  $effect(() => {
+    const n = folderId ? entry.index?.byId.get(folderId) : null
+    if (n) untrack(() => n.pathIds.forEach((p) => open.add(p)))
+  })
+
+  const filtered = $derived.by(() => {
+    const idx = entry.index
+    if (!idx) return []
+    const s = q.trim().toLowerCase()
+    const allowed = folders.filter((f) => !exclude.some((x) => f.id !== 0 && isAncestorOrSelf(idx, x, f.id)))
+    if (!s) return visibleFolders(idx, allowed, open)
+    return allowed.filter((f) => f.path.join(' / ').toLowerCase().includes(s) || f.title.toLowerCase().includes(s))
+  })
+
+  function toggle(id: number) {
+    if (open.has(id)) open.delete(id)
+    else open.add(id)
+  }
 
   function label(tg: SaveTarget): string {
     const lib = app.libraries.find((l) => l.slug === tg.library)
@@ -91,18 +111,27 @@
       </button>
     {/if}
     {#each filtered as f (f.id)}
-      <button
-        type="button"
-        role="option"
-        aria-selected={folderId === f.id}
-        class:on={folderId === f.id}
-        style:padding-left="{q ? 10 : 10 + f.depth * 16}px"
-        onclick={() => (folderId = f.id)}
-        data-testid="folder-option"
-      >
-        <Icon name={f.id === 0 ? 'library' : 'folder'} size={16} />
-        <span>{q && f.path.length > 1 ? f.path.join(' / ') : f.title}</span>
-      </button>
+      {@const kids = !q && f.id !== 0 && !!entry.index && hasSubfolders(entry.index, f.id)}
+      <div class="opt" class:on={folderId === f.id} style:padding-left="{q ? 4 : 4 + Math.max(0, f.depth - 1) * 16}px">
+        {#if kids}
+          <button
+            type="button"
+            class="tw"
+            aria-label={open.has(f.id) ? t('tree.collapse') : t('tree.expand')}
+            aria-expanded={open.has(f.id)}
+            onclick={() => toggle(f.id)}
+            data-testid="folder-toggle"
+          >
+            <Icon name={open.has(f.id) ? 'chevron-down' : 'chevron'} size={14} />
+          </button>
+        {:else if !q && f.id !== 0}
+          <span class="tw" aria-hidden="true"></span>
+        {/if}
+        <button type="button" class="pick" role="option" aria-selected={folderId === f.id} onclick={() => (folderId = f.id)} data-testid="folder-option">
+          <Icon name={f.id === 0 ? 'library' : 'folder'} size={16} />
+          <span>{q && f.path.length > 1 ? f.path.join(' / ') : f.title}</span>
+        </button>
+      </div>
     {/each}
     {#if entry.loading && !folders.length}<p class="hint pad">{t('common.loading')}</p>{/if}
   </div>
@@ -130,12 +159,13 @@
     border-radius: var(--radius);
     padding: 4px;
   }
-  .list button {
+  .list > button,
+  .pick {
     display: flex;
     gap: 8px;
     align-items: center;
     width: 100%;
-    padding: 7px 10px;
+    padding: 5px 8px;
     border: 0;
     background: none;
     color: var(--text);
@@ -144,13 +174,53 @@
     font: inherit;
     cursor: pointer;
   }
-  .list button:hover {
+  .opt {
+    display: flex;
+    align-items: center;
+    border-radius: 6px;
+  }
+  .pick {
+    flex: 1;
+    min-width: 0;
+  }
+  .list > button:hover,
+  .opt:hover {
     background: var(--hover);
   }
-  .list button.on {
+  .list > button.on,
+  .opt.on {
     background: var(--accent-soft);
+  }
+  .list > button.on,
+  .opt.on .pick {
     color: var(--accent-text);
     font-weight: 600;
+  }
+  .tw {
+    flex: none;
+    width: 22px;
+    height: 26px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0;
+    border: 0;
+    border-radius: 4px;
+    background: none;
+    color: var(--text-3);
+    cursor: pointer;
+  }
+  button.tw:hover {
+    color: var(--text);
+  }
+  .tw :global(.icon) {
+    color: inherit !important;
+  }
+  @media (hover: none) {
+    .tw {
+      width: 32px;
+      height: 36px;
+    }
   }
   .list :global(.icon) {
     color: var(--folder);

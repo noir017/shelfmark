@@ -144,10 +144,18 @@ test.describe('窄屏', () => {
     await page.getByTestId('search-toggle').tap()
     await expect(page.getByTestId('workspace-search')).toBeHidden()
 
-    await row(page, '工具').getByTestId('row-toggle').tap()
+    // 点文件夹只展开/折叠，不进入；进入走 ⋯ 菜单
+    await row(page, '工具').locator('.title').tap()
     await expect(row(page, '在线工具')).toHaveAttribute('data-depth', '1')
     await row(page, '在线工具').locator('.title').tap()
-    await expect(row(page, 'Regex101')).toBeVisible()
+    await expect(row(page, 'Regex101')).toHaveAttribute('data-depth', '2')
+    await expect(page).toHaveURL(/\/lib\/bookmarks$/)
+    await row(page, '工具').locator('.title').tap()
+    await expect(row(page, '在线工具')).toHaveCount(0)
+    await row(page, '工具').getByTestId('row-menu').tap()
+    await page.getByRole('menuitem', { name: '打开', exact: true }).tap()
+    await expect(page).toHaveURL(/\/lib\/bookmarks\/f\/\d+$/)
+    await expect(row(page, '在线工具')).toHaveAttribute('data-depth', '0')
     await page.getByTestId('crumb-sep').first().tap()
     await page.getByTestId('folder-menu').locator('a.mi', { hasText: '阅读' }).tap()
     await expect(row(page, 'Lobsters')).toBeVisible()
@@ -164,5 +172,27 @@ test.describe('窄屏', () => {
     await page.getByTestId('move-dialog').getByTestId('folder-option').filter({ hasText: '阅读' }).click()
     await page.getByRole('button', { name: '移动到这里' }).click()
     await expect(page.getByTestId('toast').filter({ hasText: '已移动' })).toBeVisible()
+  })
+
+  test('冻结行：滚到展开文件夹的子项时固定最近的文件夹，点它折叠', async ({ page }) => {
+    await page.setViewportSize({ width: 390, height: 420 })
+    await login(page, '/lib/bookmarks')
+    await row(page, '阅读').locator('.title').tap()
+    await expect(row(page, 'Lobsters')).toBeVisible()
+    const pinned = page.getByTestId('pinned-row')
+    await expect(pinned).toHaveCount(0)
+    // 把“阅读”的第三个子项滚到顶栏下面
+    await page.evaluate(() => {
+      const el = document.querySelector<HTMLElement>('[data-testid=item-row][data-title="The Go Blog"]')!
+      const head = document.querySelector<HTMLElement>('.wtop')!.getBoundingClientRect().height
+      window.scrollBy(0, el.getBoundingClientRect().top - head - 2)
+    })
+    await expect(pinned).toHaveAttribute('data-title', '阅读')
+    await pinned.locator('.title').tap()
+    await expect(row(page, 'Lobsters')).toHaveCount(0)
+    await expect(pinned).toHaveCount(0)
+    await expect(row(page, '阅读')).toBeInViewport()
+    await page.evaluate(() => window.scrollTo(0, 0))
+    await expect(pinned).toHaveCount(0)
   })
 })

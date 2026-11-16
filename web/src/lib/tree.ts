@@ -82,6 +82,15 @@ export function folderList(idx: TreeIndex, rootLabel: string): FolderEntry[] {
   return out
 }
 
+/** 折叠视图下可见的文件夹：根的直接子文件夹总是可见，其余要祖先都展开 */
+export function visibleFolders(idx: TreeIndex, list: FolderEntry[], open: { has(id: number): boolean }): FolderEntry[] {
+  return list.filter((f) => f.id === 0 || (idx.byId.get(f.id)?.pathIds ?? []).every((p) => open.has(p)))
+}
+
+export function hasSubfolders(idx: TreeIndex, id: number): boolean {
+  return childrenOf(idx, id).some((c) => c.type === 'folder')
+}
+
 export function countBookmarks(items: Item[] | undefined): number {
   let n = 0
   for (const it of items ?? []) n += it.type === 'bookmark' ? 1 : countBookmarks(it.children)

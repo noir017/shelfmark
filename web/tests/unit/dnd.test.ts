@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import type { Item } from '../../src/api/types'
 import { dropZone, planMove, planNudge, planRecreate } from '../../src/lib/dnd'
-import { childrenOf, indexTree, outlineRows } from '../../src/lib/tree'
+import { childrenOf, folderList, indexTree, outlineRows, visibleFolders } from '../../src/lib/tree'
 import { MockDB } from '../../mock/db'
 
 let nextId = 1
@@ -157,5 +157,16 @@ describe('outlineRows', () => {
     expect(view(outlineRows(idx, 0, new Set([F1.id, F2.id])))).toEqual(['A', 'B', 'F1', '  x', '  y', '  F2', '    z', 'C'])
     expect(view(outlineRows(idx, 0, new Set([F2.id])))).toEqual(['A', 'B', 'F1', 'C'])
     expect(view(outlineRows(idx, F1.id, new Set([F2.id])))).toEqual(['x', 'y', 'F2', '  z'])
+  })
+})
+
+describe('visibleFolders', () => {
+  it('默认只有根和第一层，祖先全展开才显示深层', () => {
+    const { idx, F1, F2 } = sample()
+    const list = folderList(idx, 'root')
+    const titles = (open: number[]) => visibleFolders(idx, list, new Set(open)).map((f) => f.title)
+    expect(titles([])).toEqual(['root', 'F1'])
+    expect(titles([F1.id])).toEqual(['root', 'F1', 'F2'])
+    expect(titles([F2.id])).toEqual(['root', 'F1'])
   })
 })

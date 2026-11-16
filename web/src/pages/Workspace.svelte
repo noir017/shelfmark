@@ -132,6 +132,52 @@
     else expanded.add(id)
   }
 
+  // 冻结行：滚到某个展开文件夹的子项时，把最近的那个文件夹行固定在列表顶部
+  let listEl: HTMLDivElement | undefined = $state()
+  let pinId = $state<number | null>(null)
+  let pinRaf = 0
+  const pinRow = $derived(pinId === null ? null : (rows.find((r) => r.item.id === pinId) ?? null))
+
+  function parentRow(i: number): number | null {
+    const d = rows[i]?.depth ?? 0
+    for (let j = i - 1; d > 0 && j >= 0; j--) if (rows[j].depth === d - 1) return rows[j].item.id
+    return null
+  }
+  function updatePin() {
+    pinRaf = 0
+    if (!listEl) return (pinId = null)
+    const els = [...listEl.querySelectorAll<HTMLElement>(':scope > [data-row-index]')]
+    const y = headH + 1
+    let lo = 0
+    let hi = els.length - 1
+    let top = -1
+    while (lo <= hi) {
+      const mid = (lo + hi) >> 1
+      if (els[mid].getBoundingClientRect().bottom > y) {
+        top = mid
+        hi = mid - 1
+      } else lo = mid + 1
+    }
+    pinId = top < 0 ? null : parentRow(Number(els[top].dataset.rowIndex))
+  }
+  function schedulePin() {
+    if (!pinRaf) pinRaf = requestAnimationFrame(updatePin)
+  }
+  $effect(() => {
+    void rows
+    void headH
+    schedulePin()
+  })
+  $effect(() => () => cancelAnimationFrame(pinRaf))
+
+  // 从冻结行折叠时，把那个文件夹滚回视野
+  function togglePinned(id: number) {
+    toggleExpand(id)
+    if (expanded.has(id)) return
+    const i = rows.findIndex((r) => r.item.id === id)
+    queueMicrotask(() => document.querySelector<HTMLElement>(`[data-row-index="${i}"]`)?.scrollIntoView({ block: 'start' }))
+  }
+
   // 选择栏浮在底部时，把提示条也往上推
   $effect(() => {
     document.documentElement.style.setProperty('--bottom-nav-h', selecting && !searchMode ? '56px' : '0px')
@@ -480,6 +526,8 @@
   )
 </script>
 
+<svelte:window onscroll={schedulePin} onresize={schedulePin} />
+
 <div class="workspace" style:--wtop-h="{headH}px">
   <header class="wtop" bind:clientHeight={headH}>
     <div class="wtop-row">
@@ -548,10 +596,34 @@
         {#if searchMode}
           <SearchResults q={q} onback={exitSearch} />
         {:else}
-          <div class="rows" role="list" data-testid="item-list">
+          <div class="rows" role="list" data-testid="item-list" bind:this={listEl}>
             {#if !rows.length}
               <p class="hint empty">{q.trim() ? t('manager.noMatch') : t('manager.emptyFolder')}</p>
             {/if}
+            <div class="pin">
+              {#if pinRow}
+                {@const it = pinRow.item}
+                <ItemRow
+                  item={it}
+                  {slug}
+                  depth={pinRow.depth}
+                  index={-1}
+                  count={childrenOf(idx, it.id).length}
+                  selected={selected.has(it.id)}
+                  {selecting}
+                  expanded
+                  {readonly}
+                  pinned
+                  drag={dragOpts(it.id)}
+                  onselect={(e) => toggleSelect(it.id, e)}
+                  ontoggle={() => togglePinned(it.id)}
+                  onmenu={(e) => context(e, it)}
+                  onsave={() => {}}
+                  oncancel={() => {}}
+                  onlongpress={() => longPressSelect(it.id)}
+                />
+              {/if}
+            </div>
             {#each rows as r, i (r.item.id)}
               {@const it = r.item}
               <ItemRow
@@ -762,6 +834,14 @@
     border: 1px solid var(--border);
     border-radius: var(--radius-lg);
     padding: 4px;
+  }
+  /* 高度为 0 的粘性容器：冻结行盖在列表上，不占位、不引起跳动 */
+  .pin {
+    position: sticky;
+    top: var(--wtop-h);
+    z-index: 3;
+    height: 0;
+    margin: 0 -4px;
   }
   .empty {
     padding: 24px;
