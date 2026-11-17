@@ -1,5 +1,5 @@
 // 对真实二进制跑的关键流程。每条用例建自己的库，互不影响；界面操作后再用 API 核对服务端状态。
-import { expect, test, type Page } from '@playwright/test'
+import { expect, test, type Page } from '../fixtures'
 import { newBookmark, newFolder, row, rowMenu } from '../e2e/helpers'
 
 type Node = { id: number; type: string; title: string; url?: string | null; tags: string[]; children?: Node[] }

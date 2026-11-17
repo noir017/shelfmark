@@ -11,6 +11,8 @@ cd extension && npm run test:real   # 插件冒烟：登录、收藏、角标、
 
 都会用临时数据目录自己起 `server/bin/shelfmark`，端口用 `E2E_REAL_PORT` 指定。
 
+网页的 `test:e2e`、`test:real` 在设了 `PW_CDP_URL`（可选 `PW_CDP_HEADERS`，形如 `X-Api-Key: xxx`）时连该 CDP 地址上的远程浏览器，没设就用本地浏览器，见 `web/tests/fixtures.ts`。远程浏览器得能访问本机的被测端口。
+
 ## 真实 Floccus 同步
 
 用 Floccus 发布的 Chrome 版（`floccus-build-<版本>-chrome.zip`，GitHub Releases）在 Chromium 里跑：两边合并、网页改 → 浏览器、浏览器改 → 服务端、浏览器大批量删除 → 412 拦截 → 网页允许。

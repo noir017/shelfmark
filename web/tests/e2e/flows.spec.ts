@@ -1,4 +1,4 @@
-import { expect, test } from '@playwright/test'
+import { expect, test } from '../fixtures'
 import { login, mock, reset, row } from './helpers'
 
 test.beforeEach(async ({ request }) => reset(request))
